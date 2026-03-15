@@ -136,7 +136,7 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Stats bar */}
-      <div className={`grid gap-3 ${macroRisk ? 'grid-cols-4' : 'grid-cols-3'}`}>
+      <div className={`grid gap-3 ${macroRisk ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3'}`}>
         <div className="rounded-xl border border-border bg-surface p-4 flex items-center gap-4">
           <div className="w-8 h-8 rounded-full bg-up/10 flex items-center justify-center flex-shrink-0">
             <svg className="w-4 h-4 text-up" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -207,7 +207,7 @@ export function Dashboard() {
 
       {/* Global Performance League + Macro Context (side by side on wide screens) */}
       {indices.length > 0 && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 xl:h-[480px]">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <PerformanceLeague indices={indices} />
           {(macro || macroLoading) && (
             <MacroContextCard data={macro!} loading={macroLoading && !macro} />

@@ -333,7 +333,10 @@ export function CandlestickChart({ data, height = 450, interval = '1d' }: Candle
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0]
       if (entry && chartRef.current) {
-        chartRef.current.applyOptions({ width: entry.contentRect.width })
+        chartRef.current.applyOptions({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height || height,
+        })
       }
     })
     ro.observe(containerRef.current)
@@ -417,7 +420,7 @@ export function CandlestickChart({ data, height = 450, interval = '1d' }: Candle
           <span>C: {hoverSnapshot.close.toFixed(2)}</span>
         </div>
       )}
-      <div ref={containerRef} />
+      <div ref={containerRef} style={{ height }} />
     </div>
   )
 }

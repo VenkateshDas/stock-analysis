@@ -1061,10 +1061,10 @@ function AddTradeModal({ row, virtualCapital, presetId, onClose, onSaved }: AddT
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-[1100px] z-10 flex flex-col" style={{ maxHeight: 'min(92vh, 760px)' }}>
+      <div className="relative bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-[1100px] z-10 flex flex-col" style={{ maxHeight: 'min(96vh, 760px)' }}>
 
         {/* ── Header ── */}
-        <div className="px-6 pt-5 pb-4 border-b border-border/50 shrink-0">
+        <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 sm:pb-4 border-b border-border/50 shrink-0">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2.5 min-w-0">
               <span className="text-base font-black text-text-primary tracking-tight shrink-0">
@@ -1089,10 +1089,10 @@ function AddTradeModal({ row, virtualCapital, presetId, onClose, onSaved }: AddT
         </div>
 
         {/* ── Two-column body ── */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-col md:flex-row flex-1 overflow-auto md:overflow-hidden">
 
           {/* ── Left column: levels + sizing ── */}
-          <div className="flex flex-col gap-4 p-5 w-[30%] shrink-0 border-r border-border/50">
+          <div className="flex flex-col gap-4 p-4 sm:p-5 w-full md:w-[30%] shrink-0 border-b md:border-b-0 md:border-r border-border/50">
 
             {/* Price inputs */}
             <div className="grid grid-cols-3 gap-2">
@@ -1199,7 +1199,7 @@ function AddTradeModal({ row, virtualCapital, presetId, onClose, onSaved }: AddT
           </div>
 
           {/* ── Chart column ── */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 min-h-[260px] md:min-h-0">
             <TradeChartPanel
               row={row}
               entryN={entryN}
@@ -1209,8 +1209,8 @@ function AddTradeModal({ row, virtualCapital, presetId, onClose, onSaved }: AddT
             />
           </div>
 
-          {/* ── Plan column (collapsible) ── */}
-          <div className={`shrink-0 overflow-hidden transition-[width] duration-200 border-l border-border/50 ${planOpen ? 'w-[28%]' : 'w-0'}`}>
+          {/* ── Plan column (collapsible, hidden on mobile) ── */}
+          <div className={`hidden md:block shrink-0 overflow-hidden transition-[width] duration-200 border-l border-border/50 ${planOpen ? 'w-[28%]' : 'w-0'}`}>
           <div className="flex flex-col gap-3 p-5 w-[28vw] max-w-[320px] h-full overflow-y-auto">
 
             {/* ── Signal breakdown ── */}
@@ -1343,14 +1343,14 @@ function AddTradeModal({ row, virtualCapital, presetId, onClose, onSaved }: AddT
         </div>
 
         {/* ── Footer ── */}
-        <div className="px-6 py-4 flex items-center gap-2.5 border-t border-border/50 shrink-0">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-2.5 border-t border-border/50 shrink-0">
           <button onClick={onClose}
-            className="w-24 shrink-0 py-2.5 text-sm text-text-secondary border border-border rounded-xl hover:border-accent/40 transition-colors">
+            className="w-20 sm:w-24 shrink-0 py-2.5 text-sm text-text-secondary border border-border rounded-xl hover:border-accent/40 transition-colors">
             Cancel
           </button>
           <button
             onClick={() => setPlanOpen(o => !o)}
-            className={`shrink-0 py-2.5 px-4 text-sm border rounded-xl transition-colors ${planOpen ? 'border-accent/50 text-accent bg-accent/8' : 'border-border text-text-muted hover:border-accent/40 hover:text-accent'}`}
+            className={`hidden md:block shrink-0 py-2.5 px-4 text-sm border rounded-xl transition-colors ${planOpen ? 'border-accent/50 text-accent bg-accent/8' : 'border-border text-text-muted hover:border-accent/40 hover:text-accent'}`}
             title="Toggle trade plan"
           >
             {planOpen ? '◀ Plan' : 'Plan ▶'}

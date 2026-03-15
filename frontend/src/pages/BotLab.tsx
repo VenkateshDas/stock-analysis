@@ -731,7 +731,7 @@ export function BotLab() {
 
         {!editingStrategy ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               <ParamDisplay label="Trade window" value={`${strategyParams.session_start} - ${strategyParams.session_end}`} />
               <ParamDisplay label="Morning range" value={`09:15 - ${strategyParams.opening_range_end}`} />
               <ParamDisplay label="Target RR" value={`${strategyParams.target_rr}x`} />
@@ -780,7 +780,7 @@ export function BotLab() {
         <h3 className="text-sm font-semibold text-text-primary">Step 3: AI Strategy Copilot</h3>
         <p className="text-xs text-text-muted">Generate a strategy blueprint based on experience level, risk tolerance, and objective.</p>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <div className="space-y-1">
             <label className="text-[11px] text-text-muted">Experience</label>
             <select value={blueprintExperience} onChange={(e) => setBlueprintExperience(e.target.value as any)} className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm">
@@ -797,7 +797,7 @@ export function BotLab() {
               <option value="high">High</option>
             </select>
           </div>
-          <div className="space-y-1 md:col-span-2">
+          <div className="space-y-1 sm:col-span-2 md:col-span-2">
             <label className="text-[11px] text-text-muted">Objective</label>
             <input
               value={blueprintObjective}
@@ -848,7 +848,7 @@ export function BotLab() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <div className="space-y-1">
             <label className="text-[11px] text-text-muted">Instrument</label>
             <input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm" />
@@ -882,7 +882,7 @@ export function BotLab() {
 
         {backtest?.report && (
           <div className="space-y-4 pt-2 border-t border-border">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <BigStat label="Net P/L" value={`${pnl >= 0 ? '+' : ''}INR ${pnl.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} positive={pnl >= 0} />
               <BigStat label="Win rate" value={`${winRate}%`} positive={winRate >= 50} />
               <BigStat label="Worst day" value={`INR ${Math.abs(worstDayPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} positive={worstDayPnl >= 0} invertColor />
@@ -1037,28 +1037,30 @@ export function BotLab() {
         <div>
           <p className="text-xs font-semibold text-text-muted mb-2">Open Positions ({positions.length})</p>
           {positions.length > 0 ? (
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="text-left text-text-muted border-b border-border">
-                  {['Symbol', 'Qty', 'Avg', 'Current', 'Unrealized P/L'].map((h) => (
-                    <th key={h} className="pb-2 pr-4 font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {positions.map((p, i) => (
-                  <tr key={i} className="border-b border-border/50">
-                    <td className="py-2 pr-4 font-medium text-text-primary">{p.symbol}</td>
-                    <td className="py-2 pr-4">{p.qty}</td>
-                    <td className="py-2 pr-4 font-mono">INR {p.avg_price.toFixed(2)}</td>
-                    <td className="py-2 pr-4 font-mono">INR {p.last_price.toFixed(2)}</td>
-                    <td className={`py-2 font-semibold ${p.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {p.unrealized_pnl >= 0 ? '+' : ''}INR {p.unrealized_pnl.toFixed(0)}
-                    </td>
+            <div className="overflow-x-auto -mx-1">
+              <table className="w-full text-xs border-collapse min-w-[400px]">
+                <thead>
+                  <tr className="text-left text-text-muted border-b border-border">
+                    {['Symbol', 'Qty', 'Avg', 'Current', 'Unrealized P/L'].map((h) => (
+                      <th key={h} className="pb-2 pr-4 font-medium whitespace-nowrap">{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {positions.map((p, i) => (
+                    <tr key={i} className="border-b border-border/50">
+                      <td className="py-2 pr-4 font-medium text-text-primary whitespace-nowrap">{p.symbol}</td>
+                      <td className="py-2 pr-4">{p.qty}</td>
+                      <td className="py-2 pr-4 font-mono whitespace-nowrap">INR {p.avg_price.toFixed(2)}</td>
+                      <td className="py-2 pr-4 font-mono whitespace-nowrap">INR {p.last_price.toFixed(2)}</td>
+                      <td className={`py-2 font-semibold whitespace-nowrap ${p.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {p.unrealized_pnl >= 0 ? '+' : ''}INR {p.unrealized_pnl.toFixed(0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <p className="text-xs text-text-muted">No open positions.</p>
           )}

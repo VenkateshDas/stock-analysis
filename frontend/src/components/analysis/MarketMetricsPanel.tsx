@@ -49,7 +49,7 @@ function ROCTable({ stats }: { stats: StatisticalMetrics }) {
       <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted/70 mb-2">
         Rate of Change
       </p>
-      <div className="grid grid-cols-5 gap-1.5">
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
         {cols.map(({ label, value }) => (
           <div
             key={label}
