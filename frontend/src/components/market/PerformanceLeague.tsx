@@ -61,7 +61,7 @@ export function PerformanceLeague({ indices }: Props) {
   if (ranked.length === 0) return null
 
   return (
-    <div className="bg-surface border border-border rounded-2xl overflow-hidden flex flex-col h-full">
+    <div className="bg-surface border border-border rounded-2xl overflow-hidden flex flex-col max-h-[440px]">
       <div className="px-5 pt-4 pb-3 border-b border-border flex-shrink-0">
         <p className="text-sm font-semibold text-text-primary">30-Day Performance</p>
         <p className="text-[11px] text-text-muted mt-0.5">Indices ranked by monthly return</p>

@@ -207,7 +207,7 @@ export function Dashboard() {
 
       {/* Global Performance League + Macro Context (side by side on wide screens) */}
       {indices.length > 0 && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 xl:items-start">
           <PerformanceLeague indices={indices} />
           {(macro || macroLoading) && (
             <MacroContextCard data={macro!} loading={macroLoading && !macro} />
