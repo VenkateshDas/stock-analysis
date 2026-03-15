@@ -338,36 +338,36 @@ export function StockDetail() {
           Dashboard
         </button>
 
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-black text-text-primary">{snapshot?.name ?? sym}</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl font-black text-text-primary">{snapshot?.name ?? sym}</h1>
             {snapshot && (
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-1.5">
-                <span className={`text-3xl font-black font-mono ${snapshot.change_pct >= 0 ? 'text-up' : 'text-down'}`}>
+              <div className="flex flex-wrap items-baseline gap-x-2 sm:gap-x-3 gap-y-1 mt-1.5">
+                <span className={`text-2xl sm:text-3xl font-black font-mono ${snapshot.change_pct >= 0 ? 'text-up' : 'text-down'}`}>
                   {snapshot.last_close.toLocaleString()}
                 </span>
-                <span className="text-base text-text-muted font-medium">{snapshot.currency}</span>
-                <span className={`text-lg font-bold ${snapshot.change_pct >= 0 ? 'text-up' : 'text-down'}`}>
+                <span className="text-sm text-text-muted font-medium">{snapshot.currency}</span>
+                <span className={`text-base sm:text-lg font-bold ${snapshot.change_pct >= 0 ? 'text-up' : 'text-down'}`}>
                   {snapshot.change_pct >= 0 ? '▲' : '▼'} {Math.abs(snapshot.change_pct).toFixed(2)}%
                 </span>
-                <span className="text-sm text-text-muted">Prev {snapshot.prev_close.toLocaleString()}</span>
-                <span className="text-sm text-text-muted">{snapshot.trade_date}</span>
+                <span className="text-xs sm:text-sm text-text-muted">Prev {snapshot.prev_close.toLocaleString()}</span>
+                <span className="text-xs sm:text-sm text-text-muted">{snapshot.trade_date}</span>
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
             {snapshot?.tradingview_url && (
               <a
                 href={snapshot.tradingview_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-semibold px-3 py-2 rounded-full border border-border text-text-muted hover:text-text-primary hover:border-accent/40 transition-colors"
+                className="text-xs font-semibold px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full border border-border text-text-muted hover:text-text-primary hover:border-accent/40 transition-colors"
               >
                 TradingView ↗
               </a>
             )}
             {sentiment && (
-              <span className={`text-sm font-bold px-4 py-2 rounded-full border capitalize ${sentimentClasses}`}>
+              <span className={`text-xs sm:text-sm font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border capitalize ${sentimentClasses}`}>
                 {sentiment === 'bullish' ? '↑ Bullish' : sentiment === 'bearish' ? '↓ Bearish' : '→ Neutral'}
               </span>
             )}
@@ -379,23 +379,23 @@ export function StockDetail() {
       </div>
 
       {/* ── Full-Width Native Chart ───────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 justify-end">
+      <div className="flex items-center gap-2 justify-end flex-wrap">
         {(['5m', '15m', '1h', '1d'] as const).map((iv) => (
           <button
             key={iv}
             onClick={() => setChartInterval(iv)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
               chartInterval === iv
                 ? 'text-accent border-accent/40 bg-accent/10'
                 : 'text-text-muted border-border hover:text-text-primary'
             }`}
           >
-            {iv === '5m' ? '5 Min' : iv === '15m' ? '15 Min' : iv === '1h' ? '1 Hour' : '1 Day'}
+            {iv === '5m' ? '5m' : iv === '15m' ? '15m' : iv === '1h' ? '1h' : '1D'}
           </button>
         ))}
       </div>
       {historyLoading ? (
-        <div className="bg-surface border border-border rounded-2xl h-[540px] flex items-center justify-center">
+        <div className="bg-surface border border-border rounded-2xl h-[300px] sm:h-[560px] flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             <p className="text-text-muted text-sm">Loading chart data…</p>
@@ -411,13 +411,13 @@ export function StockDetail() {
 
       {/* ── Signal Cockpit ────────────────────────────────────────────────────── */}
       {analysisLoading && !analysis ? (
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="rounded-2xl border border-border bg-surface h-20 animate-pulse" />
           ))}
         </div>
       ) : analysis ? (
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {buildCockpit(analysis.technical).map(sig => (
             <SignalChip key={sig.label} {...sig} />
           ))}

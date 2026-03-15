@@ -473,47 +473,47 @@ export function IndexDetail() {
           Dashboard
         </button>
 
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-black text-text-primary">{indexData?.name ?? sym}</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl font-black text-text-primary">{indexData?.name ?? sym}</h1>
             {indexData && (
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-1.5">
+              <div className="flex flex-wrap items-baseline gap-x-2 sm:gap-x-3 gap-y-1 mt-1.5">
                 <span
-                  className={`text-3xl font-black font-mono ${
+                  className={`text-2xl sm:text-3xl font-black font-mono ${
                     indexData.change_pct >= 0 ? 'text-up' : 'text-down'
                   }`}
                 >
                   {indexData.last_close.toLocaleString()}
                 </span>
-                <span className="text-base text-text-muted font-medium">{indexData.currency}</span>
+                <span className="text-sm text-text-muted font-medium">{indexData.currency}</span>
                 <span
-                  className={`text-lg font-bold ${indexData.change_pct >= 0 ? 'text-up' : 'text-down'}`}
+                  className={`text-base sm:text-lg font-bold ${indexData.change_pct >= 0 ? 'text-up' : 'text-down'}`}
                 >
                   {indexData.change_pct >= 0 ? '▲' : '▼'} {Math.abs(indexData.change_pct).toFixed(2)}%
                 </span>
-                <span className="text-sm text-text-muted">
+                <span className="text-xs sm:text-sm text-text-muted">
                   Prev {indexData.prev_close.toLocaleString()}
                   {indexData.prev_trade_date ? ` · ${indexData.prev_trade_date}` : ''}
                 </span>
-                <span className="text-sm text-text-muted">{indexData.trade_date}</span>
+                <span className="text-xs sm:text-sm text-text-muted">{indexData.trade_date}</span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
             {indexData?.tradingview_url && (
               <a
                 href={indexData.tradingview_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-semibold px-3 py-2 rounded-full border border-border text-text-muted hover:text-text-primary hover:border-accent/40 transition-colors"
+                className="text-xs font-semibold px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full border border-border text-text-muted hover:text-text-primary hover:border-accent/40 transition-colors"
               >
                 TradingView ↗
               </a>
             )}
             {sentiment && (
               <span
-                className={`text-sm font-bold px-4 py-2 rounded-full border capitalize ${sentimentClasses}`}
+                className={`text-xs sm:text-sm font-bold px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border capitalize ${sentimentClasses}`}
               >
                 {sentiment === 'bullish' ? '↑ Bullish' : sentiment === 'bearish' ? '↓ Bearish' : '→ Neutral'}
               </span>
@@ -527,23 +527,23 @@ export function IndexDetail() {
       </div>
 
       {/* ── Price Chart ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 justify-end">
+      <div className="flex items-center gap-2 justify-end flex-wrap">
         {(['5m', '15m', '1h', '1d'] as const).map((iv) => (
           <button
             key={iv}
             onClick={() => setChartInterval(iv)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
               chartInterval === iv
                 ? 'text-accent border-accent/40 bg-accent/10'
                 : 'text-text-muted border-border hover:text-text-primary'
             }`}
           >
-            {iv === '5m' ? '5 Min' : iv === '15m' ? '15 Min' : iv === '1h' ? '1 Hour' : '1 Day'}
+            {iv === '5m' ? '5m' : iv === '15m' ? '15m' : iv === '1h' ? '1h' : '1D'}
           </button>
         ))}
       </div>
       {historyLoading ? (
-        <div className="bg-surface border border-border rounded-2xl h-[540px] flex items-center justify-center">
+        <div className="bg-surface border border-border rounded-2xl h-[300px] sm:h-[560px] flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             <p className="text-text-muted text-sm">Loading chart data…</p>
