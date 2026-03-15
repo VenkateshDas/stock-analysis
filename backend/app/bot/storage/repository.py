@@ -41,7 +41,8 @@ class BotRepository:
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS strategies (
-                    strategy_id TEXT PRIMARY KEY,
+                    strategy_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL DEFAULT 'default',
                     name TEXT NOT NULL,
                     version TEXT NOT NULL,
                     description TEXT,
@@ -49,20 +50,23 @@ class BotRepository:
                     parameters_json TEXT,
                     enabled INTEGER NOT NULL,
                     algo_id TEXT,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (strategy_id, user_id)
                 )
                 """
             )
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS backtest_runs (
-                    run_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL DEFAULT 'default',
                     strategy_id TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     completed_at TEXT,
-                    report_json TEXT
+                    report_json TEXT,
+                    PRIMARY KEY (run_id, user_id)
                 )
                 """
             )
@@ -96,21 +100,24 @@ class BotRepository:
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS signals (
-                    signal_id TEXT PRIMARY KEY,
+                    signal_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL DEFAULT 'default',
                     strategy_id TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     signal_type TEXT NOT NULL,
                     confidence REAL NOT NULL,
                     price REAL NOT NULL,
                     timestamp TEXT NOT NULL,
-                    reason TEXT NOT NULL
+                    reason TEXT NOT NULL,
+                    PRIMARY KEY (signal_id, user_id)
                 )
                 """
             )
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS order_intents (
-                    intent_id TEXT PRIMARY KEY,
+                    intent_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL DEFAULT 'default',
                     algo_id TEXT NOT NULL,
                     strategy_version TEXT NOT NULL,
                     signal_id TEXT NOT NULL,
@@ -120,7 +127,8 @@ class BotRepository:
                     order_type TEXT NOT NULL,
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL,
-                    approved_at TEXT
+                    approved_at TEXT,
+                    PRIMARY KEY (intent_id, user_id)
                 )
                 """
             )
@@ -141,7 +149,8 @@ class BotRepository:
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS live_trades (
-                    trade_id TEXT PRIMARY KEY,
+                    trade_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL DEFAULT 'default',
                     intent_id TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     side TEXT NOT NULL,
@@ -153,22 +162,26 @@ class BotRepository:
                     pnl REAL,
                     mode TEXT NOT NULL,
                     kite_order_id TEXT,
-                    status TEXT NOT NULL
+                    status TEXT NOT NULL,
+                    PRIMARY KEY (trade_id, user_id)
                 )
                 """
             )
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS bot_settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
+                    user_id TEXT NOT NULL DEFAULT 'default',
+                    key TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    PRIMARY KEY (user_id, key)
                 )
                 """
             )
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS paper_trades (
-                    id TEXT PRIMARY KEY,
+                    id TEXT NOT NULL,
+                    user_id TEXT NOT NULL DEFAULT 'default',
                     symbol TEXT NOT NULL,
                     company_name TEXT NOT NULL,
                     sector TEXT NOT NULL DEFAULT '',
@@ -184,28 +197,22 @@ class BotRepository:
                     status TEXT NOT NULL DEFAULT 'OPEN',
                     exit_price REAL,
                     exit_date TEXT,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (id, user_id)
                 )
                 """
             )
 
-    def register_strategy(self, strategy: StrategyConfig) -> None:
+    def register_strategy(self, strategy: StrategyConfig, user_id: str = "default") -> None:
         with self._conn() as conn:
             conn.execute(
                 """
-                INSERT INTO strategies (strategy_id, name, version, description, instrument, parameters_json, enabled, algo_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(strategy_id) DO UPDATE SET
-                    name=excluded.name,
-                    version=excluded.version,
-                    description=excluded.description,
-                    instrument=excluded.instrument,
-                    parameters_json=excluded.parameters_json,
-                    enabled=excluded.enabled,
-                    algo_id=excluded.algo_id
+                INSERT OR REPLACE INTO strategies (strategy_id, user_id, name, version, description, instrument, parameters_json, enabled, algo_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     strategy.strategy_id,
+                    user_id,
                     strategy.name,
                     strategy.version,
                     strategy.description,
@@ -217,9 +224,11 @@ class BotRepository:
                 ),
             )
 
-    def list_strategies(self) -> List[StrategyConfig]:
+    def list_strategies(self, user_id: str = "default") -> List[StrategyConfig]:
         with self._conn() as conn:
-            rows = conn.execute("SELECT * FROM strategies ORDER BY created_at DESC").fetchall()
+            rows = conn.execute(
+                "SELECT * FROM strategies WHERE user_id=? ORDER BY created_at DESC", (user_id,)
+            ).fetchall()
         out: List[StrategyConfig] = []
         for row in rows:
             out.append(
@@ -237,22 +246,23 @@ class BotRepository:
             )
         return out
 
-    def create_backtest_run(self, run_id: str, strategy_id: str, symbol: str) -> None:
+    def create_backtest_run(self, run_id: str, strategy_id: str, symbol: str, user_id: str = "default") -> None:
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO backtest_runs (run_id, strategy_id, symbol, status, created_at) VALUES (?, ?, ?, ?, ?)",
-                (run_id, strategy_id, symbol, "RUNNING", datetime.utcnow().isoformat()),
+                "INSERT INTO backtest_runs (run_id, user_id, strategy_id, symbol, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (run_id, user_id, strategy_id, symbol, "RUNNING", datetime.utcnow().isoformat()),
             )
 
-    def finish_backtest_run(self, run_id: str, status: str, report: Optional[BacktestReport]) -> None:
+    def finish_backtest_run(self, run_id: str, status: str, report: Optional[BacktestReport], user_id: str = "default") -> None:
         with self._conn() as conn:
             conn.execute(
-                "UPDATE backtest_runs SET status=?, completed_at=?, report_json=? WHERE run_id=?",
+                "UPDATE backtest_runs SET status=?, completed_at=?, report_json=? WHERE run_id=? AND user_id=?",
                 (
                     status,
                     datetime.utcnow().isoformat(),
                     report.model_dump_json() if report else None,
                     run_id,
+                    user_id,
                 ),
             )
 
@@ -287,9 +297,11 @@ class BotRepository:
                 [(p.run_id, p.timestamp.isoformat(), p.equity) for p in points],
             )
 
-    def get_backtest_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+    def get_backtest_run(self, run_id: str, user_id: str = "default") -> Optional[Dict[str, Any]]:
         with self._conn() as conn:
-            row = conn.execute("SELECT * FROM backtest_runs WHERE run_id=?", (run_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM backtest_runs WHERE run_id=? AND user_id=?", (run_id, user_id)
+            ).fetchone()
         if row is None:
             return None
         report = BacktestReport.model_validate_json(row["report_json"]) if row["report_json"] else None
@@ -332,15 +344,16 @@ class BotRepository:
             for row in rows
         ]
 
-    def save_signal(self, signal: SignalEvent) -> None:
+    def save_signal(self, signal: SignalEvent, user_id: str = "default") -> None:
         with self._conn() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO signals (signal_id, strategy_id, symbol, signal_type, confidence, price, timestamp, reason)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO signals (signal_id, user_id, strategy_id, symbol, signal_type, confidence, price, timestamp, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     signal.signal_id,
+                    user_id,
                     signal.strategy_id,
                     signal.symbol,
                     signal.signal_type,
@@ -351,12 +364,12 @@ class BotRepository:
                 ),
             )
 
-    def list_signals(self, on_date: date) -> List[SignalEvent]:
+    def list_signals(self, on_date: date, user_id: str = "default") -> List[SignalEvent]:
         prefix = on_date.isoformat()
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM signals WHERE timestamp LIKE ? ORDER BY timestamp DESC",
-                (f"{prefix}%",),
+                "SELECT * FROM signals WHERE user_id=? AND timestamp LIKE ? ORDER BY timestamp DESC",
+                (user_id, f"{prefix}%"),
             ).fetchall()
         return [
             SignalEvent(
@@ -372,15 +385,16 @@ class BotRepository:
             for row in rows
         ]
 
-    def create_order_intent(self, intent: OrderIntent) -> None:
+    def create_order_intent(self, intent: OrderIntent, user_id: str = "default") -> None:
         with self._conn() as conn:
             conn.execute(
                 """
-                INSERT INTO order_intents (intent_id, algo_id, strategy_version, signal_id, symbol, side, quantity, order_type, status, created_at, approved_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO order_intents (intent_id, user_id, algo_id, strategy_version, signal_id, symbol, side, quantity, order_type, status, created_at, approved_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     intent.intent_id,
+                    user_id,
                     intent.algo_id,
                     intent.strategy_version,
                     intent.signal_id,
@@ -394,12 +408,12 @@ class BotRepository:
                 ),
             )
 
-    def approve_order_intent(self, intent_id: str, approved: bool) -> bool:
+    def approve_order_intent(self, intent_id: str, approved: bool, user_id: str = "default") -> bool:
         status = "APPROVED" if approved else "REJECTED"
         with self._conn() as conn:
             cur = conn.execute(
-                "UPDATE order_intents SET status=?, approved_at=? WHERE intent_id=?",
-                (status, datetime.utcnow().isoformat(), intent_id),
+                "UPDATE order_intents SET status=?, approved_at=? WHERE intent_id=? AND user_id=?",
+                (status, datetime.utcnow().isoformat(), intent_id, user_id),
             )
         return cur.rowcount > 0
 
@@ -455,6 +469,7 @@ class BotRepository:
         entry_price: float,
         entry_time: datetime,
         mode: str,
+        user_id: str = "default",
         kite_order_id: Optional[str] = None,
         status: str = "OPEN",
     ) -> None:
@@ -462,80 +477,84 @@ class BotRepository:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO live_trades
-                    (trade_id, intent_id, symbol, side, qty, entry_price, entry_time, mode, kite_order_id, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (trade_id, user_id, intent_id, symbol, side, qty, entry_price, entry_time, mode, kite_order_id, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (trade_id, intent_id, symbol, side, qty, entry_price,
+                (trade_id, user_id, intent_id, symbol, side, qty, entry_price,
                  entry_time.isoformat(), mode, kite_order_id, status),
             )
 
-    def get_live_trades_today(self) -> List[Dict[str, Any]]:
+    def get_live_trades_today(self, user_id: str = "default") -> List[Dict[str, Any]]:
         prefix = date.today().isoformat()
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM live_trades WHERE entry_time LIKE ? ORDER BY entry_time DESC",
-                (f"{prefix}%",),
+                "SELECT * FROM live_trades WHERE user_id=? AND entry_time LIKE ? ORDER BY entry_time DESC",
+                (user_id, f"{prefix}%"),
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_open_paper_positions(self) -> List[Dict[str, Any]]:
+    def get_open_paper_positions(self, user_id: str = "default") -> List[Dict[str, Any]]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM live_trades WHERE status='OPEN' AND mode='paper' ORDER BY entry_time DESC",
+                "SELECT * FROM live_trades WHERE user_id=? AND status='OPEN' AND mode='paper' ORDER BY entry_time DESC",
+                (user_id,),
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_today_trade_count(self) -> int:
+    def get_today_trade_count(self, user_id: str = "default") -> int:
         prefix = date.today().isoformat()
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) as cnt FROM live_trades WHERE entry_time LIKE ?",
-                (f"{prefix}%",),
+                "SELECT COUNT(*) as cnt FROM live_trades WHERE user_id=? AND entry_time LIKE ?",
+                (user_id, f"{prefix}%"),
             ).fetchone()
         return int(row["cnt"]) if row else 0
 
-    def get_today_pnl(self) -> float:
+    def get_today_pnl(self, user_id: str = "default") -> float:
         prefix = date.today().isoformat()
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT SUM(COALESCE(pnl, 0)) as total FROM live_trades WHERE entry_time LIKE ? AND pnl IS NOT NULL",
-                (f"{prefix}%",),
+                "SELECT SUM(COALESCE(pnl, 0)) as total FROM live_trades WHERE user_id=? AND entry_time LIKE ? AND pnl IS NOT NULL",
+                (user_id, f"{prefix}%"),
             ).fetchone()
         return float(row["total"] or 0.0)
 
-    def get_order_intent(self, intent_id: str) -> Optional[Dict[str, Any]]:
+    def get_order_intent(self, intent_id: str, user_id: str = "default") -> Optional[Dict[str, Any]]:
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT * FROM order_intents WHERE intent_id=?", (intent_id,)
+                "SELECT * FROM order_intents WHERE intent_id=? AND user_id=?", (intent_id, user_id)
             ).fetchone()
         return dict(row) if row else None
 
-    def get_pending_intents(self) -> List[Dict[str, Any]]:
+    def get_pending_intents(self, user_id: str = "default") -> List[Dict[str, Any]]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM order_intents WHERE status='PENDING_APPROVAL' ORDER BY created_at DESC"
+                "SELECT * FROM order_intents WHERE user_id=? AND status='PENDING_APPROVAL' ORDER BY created_at DESC",
+                (user_id,),
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def mark_intent_executed(self, intent_id: str, order_id: str) -> None:
+    def mark_intent_executed(self, intent_id: str, order_id: str, user_id: str = "default") -> None:
         with self._conn() as conn:
             conn.execute(
-                "UPDATE order_intents SET status='EXECUTED', approved_at=? WHERE intent_id=?",
-                (datetime.utcnow().isoformat(), intent_id),
+                "UPDATE order_intents SET status='EXECUTED', approved_at=? WHERE intent_id=? AND user_id=?",
+                (datetime.utcnow().isoformat(), intent_id, user_id),
             )
 
     # ---- bot_settings ----
 
-    def get_setting(self, key: str) -> Optional[str]:
+    def get_setting(self, key: str, user_id: str = "default") -> Optional[str]:
         with self._conn() as conn:
-            row = conn.execute("SELECT value FROM bot_settings WHERE key=?", (key,)).fetchone()
+            row = conn.execute(
+                "SELECT value FROM bot_settings WHERE user_id=? AND key=?", (user_id, key)
+            ).fetchone()
         return row["value"] if row else None
 
-    def save_setting(self, key: str, value: str) -> None:
+    def save_setting(self, key: str, value: str, user_id: str = "default") -> None:
         with self._conn() as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
-                (key, value),
+                "INSERT OR REPLACE INTO bot_settings (user_id, key, value) VALUES (?, ?, ?)",
+                (user_id, key, value),
             )
 
     # ---- paper_trades ----
@@ -561,51 +580,57 @@ class BotRepository:
             created_at=row["created_at"],
         )
 
-    def create_paper_trade(self, trade: PaperTradeCreate, trade_id: str, shares: int, entry_date: str) -> str:
+    def create_paper_trade(self, trade: PaperTradeCreate, trade_id: str, shares: int, entry_date: str, user_id: str = "default") -> str:
         now = datetime.utcnow().isoformat()
         with self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO paper_trades
-                    (id, symbol, company_name, sector, strategy, entry_price, stop_price,
+                    (id, user_id, symbol, company_name, sector, strategy, entry_price, stop_price,
                      target_price, atr, shares, virtual_capital, entry_date, notes, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?)
                 """,
                 (
-                    trade_id, trade.symbol, trade.company_name, trade.sector, trade.strategy,
+                    trade_id, user_id, trade.symbol, trade.company_name, trade.sector, trade.strategy,
                     trade.entry_price, trade.stop_price, trade.target_price, trade.atr,
                     shares, trade.virtual_capital, entry_date, trade.notes, now,
                 ),
             )
         return trade_id
 
-    def list_paper_trades(self, open_only: bool = False) -> List[PaperTrade]:
+    def list_paper_trades(self, open_only: bool = False, user_id: str = "default") -> List[PaperTrade]:
         with self._conn() as conn:
             if open_only:
                 rows = conn.execute(
-                    "SELECT * FROM paper_trades WHERE status='OPEN' ORDER BY created_at DESC"
+                    "SELECT * FROM paper_trades WHERE user_id=? AND status='OPEN' ORDER BY created_at DESC",
+                    (user_id,),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM paper_trades ORDER BY created_at DESC"
+                    "SELECT * FROM paper_trades WHERE user_id=? ORDER BY created_at DESC",
+                    (user_id,),
                 ).fetchall()
         return [self._row_to_paper_trade(r) for r in rows]
 
-    def get_paper_trade(self, trade_id: str) -> Optional[PaperTrade]:
+    def get_paper_trade(self, trade_id: str, user_id: str = "default") -> Optional[PaperTrade]:
         with self._conn() as conn:
-            row = conn.execute("SELECT * FROM paper_trades WHERE id=?", (trade_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM paper_trades WHERE id=? AND user_id=?", (trade_id, user_id)
+            ).fetchone()
         return self._row_to_paper_trade(row) if row else None
 
-    def close_paper_trade(self, trade_id: str, status: TradeStatus, exit_price: float) -> bool:
+    def close_paper_trade(self, trade_id: str, status: TradeStatus, exit_price: float, user_id: str = "default") -> bool:
         today = date.today().isoformat()
         with self._conn() as conn:
             cur = conn.execute(
-                "UPDATE paper_trades SET status=?, exit_price=?, exit_date=? WHERE id=?",
-                (status.value, exit_price, today, trade_id),
+                "UPDATE paper_trades SET status=?, exit_price=?, exit_date=? WHERE id=? AND user_id=?",
+                (status.value, exit_price, today, trade_id, user_id),
             )
         return cur.rowcount > 0
 
-    def delete_paper_trade(self, trade_id: str) -> bool:
+    def delete_paper_trade(self, trade_id: str, user_id: str = "default") -> bool:
         with self._conn() as conn:
-            cur = conn.execute("DELETE FROM paper_trades WHERE id=?", (trade_id,))
+            cur = conn.execute(
+                "DELETE FROM paper_trades WHERE id=? AND user_id=?", (trade_id, user_id)
+            )
         return cur.rowcount > 0

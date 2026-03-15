@@ -2,7 +2,7 @@
 
 Developer guidance for Claude Code. Update this file whenever a repo-wide decision, constraint, or gotcha needs to persist across sessions.
 
-**Last updated:** 2026-03-15 — Bot Lab redesign, CPR indicator, 13 indices
+**Last updated:** 2026-03-15 — Multi-tenancy JWT auth, per-user bot/paper-trades isolation
 
 ---
 
@@ -39,6 +39,19 @@ These are non-obvious. Violating them silently breaks things.
 | **TypeScript** | All types in `frontend/src/types/` — never inline | `strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true` |
 | **UI labels** | Never display "RSI", "MACD", "ADX" to users | Plain-English descriptions only (user-facing product decision) |
 | **LLM model** | `minimax/minimax-m2.5` via OpenRouter | Both `market_summary.py` and `strategy_advisor.py` must use this model |
+| **Auth** | JWT (`PyJWT==2.9.0`) + bcrypt (`passlib[bcrypt]==1.7.4`) | `/api/v1/bot/*` and `/api/v1/paper-trades/*` require `Authorization: Bearer <token>`; market/indices endpoints are public |
+| **Auth users** | `AUTH_USERS=alice:$2b$...,bob:$2b$...` env var | Comma-separated `username:bcrypt_hash` pairs. Generate hash: `.venv/bin/python3 -c "from passlib.context import CryptContext; print(CryptContext(['bcrypt']).hash('pass'))"` |
+
+---
+
+## Authentication (Multi-Tenancy)
+
+- `POST /api/v1/auth/login` `{username, password}` → `{access_token, token_type}`
+- `GET /api/v1/auth/me` (requires token) → `{username, id}`
+- `get_current_user` FastAPI dependency in `app/api/v1/auth.py` — inject into protected endpoints
+- DB migration runs at startup (`bot/storage/migrations.py`) — adds `user_id TEXT NOT NULL DEFAULT 'default'` to all user-scoped tables; rewrites `bot_settings` to composite PK `(user_id, key)`
+- `KiteAuthManager(user_id)` — per-user session file at `data/bot/{user_id}/kite_session.json`
+- Frontend: `useAuthStore` in `store/useAuthStore.ts`; `RequireAuth` wraps `/bot` and `/paper-trades` routes
 
 ---
 

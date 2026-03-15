@@ -44,6 +44,23 @@ const client = axios.create({
   timeout: 30000,
 })
 
+client.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token')
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+
+client.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('auth_token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(err)
+  },
+)
+
 export const api = {
   getIndices: () =>
     client.get<IndexSnapshot[]>('/indices').then((r) => r.data),
@@ -237,4 +254,14 @@ export const api = {
 
   getStockFundamentals: (ticker: string) =>
     client.get<StockFundamentals>(`/stocks/${ticker}/fundamentals`).then((r) => r.data),
+
+  // Auth
+  login: (username: string, password: string) =>
+    client.post<{ access_token: string; token_type: string }>('/auth/login', { username, password }).then((r) => r.data),
+
+  signup: (username: string, password: string, invite_code = '') =>
+    client.post<{ access_token: string; token_type: string }>('/auth/signup', { username, password, invite_code }).then((r) => r.data),
+
+  getMe: () =>
+    client.get<{ username: string; id: string }>('/auth/me').then((r) => r.data),
 }

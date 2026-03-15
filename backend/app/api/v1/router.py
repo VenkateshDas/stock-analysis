@@ -1,9 +1,11 @@
 from fastapi import APIRouter
 
+from app.api.v1 import auth as auth_module
 from app.api.v1.endpoints import market_data, analysis, llm_summary, trend, sector, opening_range, heatmap, bot, pcr, opportunities, screener, paper_trades, macro, valuation
 
 api_router = APIRouter()
 
+api_router.include_router(auth_module.router, tags=["Auth"])
 api_router.include_router(market_data.router, tags=["Market Data"])
 api_router.include_router(analysis.router, tags=["Analysis"])
 api_router.include_router(llm_summary.router, tags=["LLM Summary"])

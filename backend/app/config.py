@@ -355,6 +355,11 @@ class Settings(BaseSettings):
     analysis_lookback_days: int = 252   # ~1 trading year for indicators
     trend_lookback_days: int = 1260     # ~5 trading years for yearly trend (Theil-Sen + Hurst)
 
+    jwt_secret: str = Field(default="change-me-in-production", alias="JWT_SECRET")
+    auth_users: str = Field(default="", alias="AUTH_USERS")
+    jwt_expiry_hours: int = Field(default=24, alias="JWT_EXPIRY_HOURS")
+    signup_invite_code: str = Field(default="", alias="SIGNUP_INVITE_CODE")
+
     model_config = {"env_file": str(_env_path), "populate_by_name": True}
 
 

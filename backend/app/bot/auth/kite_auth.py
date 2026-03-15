@@ -4,10 +4,14 @@ import json
 from pathlib import Path
 from typing import Optional
 
-SESSION_FILE = Path(__file__).resolve().parents[4] / "data" / "bot" / "kite_session.json"
+_DATA_ROOT = Path(__file__).resolve().parents[3] / "data" / "bot"
 
 
 class KiteAuthManager:
+    def __init__(self, user_id: str = "default"):
+        self._session_file = _DATA_ROOT / user_id / "kite_session.json"
+        self._session_file.parent.mkdir(parents=True, exist_ok=True)
+
     def get_login_url(self, api_key: str) -> str:
         return f"https://kite.zerodha.com/connect/login?api_key={api_key}&v=3"
 
@@ -26,15 +30,14 @@ class KiteAuthManager:
             "user_id": data.get("user_id", ""),
             "user_name": data.get("user_name", ""),
         }
-        SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-        SESSION_FILE.write_text(json.dumps(session))
+        self._session_file.write_text(json.dumps(session))
         return session
 
     def load_session(self) -> Optional[dict]:
-        if not SESSION_FILE.exists():
+        if not self._session_file.exists():
             return None
         try:
-            return json.loads(SESSION_FILE.read_text())
+            return json.loads(self._session_file.read_text())
         except Exception:
             return None
 
@@ -71,8 +74,7 @@ class KiteAuthManager:
         existing = self.load_session() or {}
         existing["api_key"] = api_key
         existing["api_secret"] = api_secret
-        SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-        SESSION_FILE.write_text(json.dumps(existing))
+        self._session_file.write_text(json.dumps(existing))
 
     def get_masked_api_key(self) -> Optional[str]:
         session = self.load_session()
@@ -92,10 +94,7 @@ class KiteAuthManager:
             return None
 
     def disconnect(self) -> None:
-        if SESSION_FILE.exists():
+        if self._session_file.exists():
             session = self.load_session() or {}
             session.pop("access_token", None)
-            SESSION_FILE.write_text(json.dumps(session))
-
-
-kite_auth = KiteAuthManager()
+            self._session_file.write_text(json.dumps(session))

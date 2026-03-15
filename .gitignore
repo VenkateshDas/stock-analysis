@@ -10,7 +10,7 @@ __pycache__/
 *.pyd
 .Python
 backend/.venv/
-backend/=*/
+backend/=*
 *.egg-info/
 dist/
 build/

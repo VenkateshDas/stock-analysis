@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from app.bot.auth.kite_auth import kite_auth
+from app.bot.auth.kite_auth import KiteAuthManager
 from app.bot.backtest.engine import BacktestEngine
 from app.bot.backtest.walkforward import WalkForwardRunner
 from app.bot.execution.brokers import build_order_intent
@@ -40,8 +40,8 @@ class BotService:
 
     # ---- Strategy management ----
 
-    def register_strategy(self, strategy: StrategyConfig) -> None:
-        repo.register_strategy(strategy)
+    def register_strategy(self, strategy: StrategyConfig, user_id: str = "default") -> None:
+        repo.register_strategy(strategy, user_id=user_id)
         repo.save_audit_event(
             AuditEvent(
                 event_date=date.today(),
@@ -53,14 +53,14 @@ class BotService:
             )
         )
 
-    def list_strategies(self) -> List[StrategyConfig]:
-        return repo.list_strategies()
+    def list_strategies(self, user_id: str = "default") -> List[StrategyConfig]:
+        return repo.list_strategies(user_id=user_id)
 
     # ---- Backtest ----
 
-    def run_backtest(self, req: BacktestRunRequest) -> BacktestRunStatus:
+    def run_backtest(self, req: BacktestRunRequest, user_id: str = "default") -> BacktestRunStatus:
         run_id = f"BT-{uuid.uuid4().hex[:10]}"
-        repo.create_backtest_run(run_id, req.config.strategy_id, req.config.symbol)
+        repo.create_backtest_run(run_id, req.config.strategy_id, req.config.symbol, user_id=user_id)
         repo.save_audit_event(
             AuditEvent(
                 event_date=date.today(),
@@ -76,7 +76,7 @@ class BotService:
             artifacts = self.engine.run(req.config, req.risk, run_id=run_id)
             repo.save_backtest_trades(artifacts.trades)
             repo.save_backtest_equity(artifacts.equity)
-            repo.finish_backtest_run(run_id, "COMPLETED", artifacts.report)
+            repo.finish_backtest_run(run_id, "COMPLETED", artifacts.report, user_id=user_id)
             repo.save_audit_event(
                 AuditEvent(
                     event_date=date.today(),
@@ -92,7 +92,7 @@ class BotService:
                 )
             )
         except Exception as exc:
-            repo.finish_backtest_run(run_id, "FAILED", None)
+            repo.finish_backtest_run(run_id, "FAILED", None, user_id=user_id)
             repo.save_audit_event(
                 AuditEvent(
                     event_date=date.today(),
@@ -106,12 +106,12 @@ class BotService:
             )
             raise
 
-        record = repo.get_backtest_run(run_id)
+        record = repo.get_backtest_run(run_id, user_id=user_id)
         assert record is not None
         return BacktestRunStatus(**record)
 
-    def get_backtest_run(self, run_id: str) -> BacktestRunStatus | None:
-        record = repo.get_backtest_run(run_id)
+    def get_backtest_run(self, run_id: str, user_id: str = "default") -> BacktestRunStatus | None:
+        record = repo.get_backtest_run(run_id, user_id=user_id)
         if record is None:
             return None
         return BacktestRunStatus(**record)
@@ -122,15 +122,15 @@ class BotService:
     def get_backtest_equity(self, run_id: str):
         return repo.get_backtest_equity(run_id)
 
-    def improve_strategy(self, run_id: str):
+    def improve_strategy(self, run_id: str, user_id: str = "default"):
         from app.bot.ai.strategy_advisor import strategy_advisor_service
 
-        status = self.get_backtest_run(run_id)
+        status = self.get_backtest_run(run_id, user_id=user_id)
         if status is None or status.report is None:
             raise ValueError(f"Backtest {run_id} not found or has no completed report")
 
         trades = self.get_backtest_trades(run_id)
-        strategies = self.list_strategies()
+        strategies = self.list_strategies(user_id=user_id)
         strategy = next(
             (s for s in strategies if s.strategy_id == status.report.strategy_id),
             None,
@@ -172,10 +172,9 @@ class BotService:
 
     # ---- Signals (real engine) ----
 
-    def run_signals(self, req: SignalsRunRequest) -> Dict:
-        # Load registered strategy parameters so signal engine uses user's config
+    def run_signals(self, req: SignalsRunRequest, user_id: str = "default") -> Dict:
         strategy_params: dict = {}
-        strategies = repo.list_strategies()
+        strategies = repo.list_strategies(user_id=user_id)
         active = next((s for s in strategies if s.strategy_id == req.strategy_id), None)
         if active:
             strategy_params = active.parameters or {}
@@ -204,7 +203,7 @@ class BotService:
                 timestamp=req.as_of or datetime.utcnow(),
                 reason=reason,
             )
-            repo.save_signal(signal)
+            repo.save_signal(signal, user_id=user_id)
             repo.save_audit_event(
                 AuditEvent(
                     event_date=date.today(),
@@ -227,7 +226,7 @@ class BotService:
             timestamp=req.as_of or datetime.utcnow(),
             reason=reason,
         )
-        repo.save_signal(signal)
+        repo.save_signal(signal, user_id=user_id)
 
         intent = build_order_intent(
             algo_id="ALG-IN-BREAKOUT-V1",
@@ -237,11 +236,10 @@ class BotService:
             side=signal_type,
             quantity=1,
         )
-        repo.create_order_intent(intent)
+        repo.create_order_intent(intent, user_id=user_id)
 
-        # Stash signal price on the intent row for paper execution
         try:
-            repo.save_setting(f"signal_price_{intent.intent_id}", str(price))
+            repo.save_setting(f"signal_price_{intent.intent_id}", str(price), user_id=user_id)
         except Exception:
             pass
 
@@ -260,16 +258,16 @@ class BotService:
         )
         return {"signal": signal, "order_intent": intent}
 
-    def list_signals(self, on_date: date):
-        return repo.list_signals(on_date)
+    def list_signals(self, on_date: date, user_id: str = "default"):
+        return repo.list_signals(on_date, user_id=user_id)
 
-    def list_pending_intents(self) -> List[Dict]:
-        return repo.get_pending_intents()
+    def list_pending_intents(self, user_id: str = "default") -> List[Dict]:
+        return repo.get_pending_intents(user_id=user_id)
 
     # ---- Order approval + execution ----
 
-    def approve_order(self, req: OrderApprovalRequest) -> Dict:
-        ok = repo.approve_order_intent(req.intent_id, req.approved)
+    def approve_order(self, req: OrderApprovalRequest, user_id: str = "default") -> Dict:
+        ok = repo.approve_order_intent(req.intent_id, req.approved, user_id=user_id)
         repo.save_audit_event(
             AuditEvent(
                 event_date=date.today(),
@@ -281,14 +279,14 @@ class BotService:
         )
         return {"updated": ok}
 
-    def execute_order(self, intent_id: str) -> Dict:
-        mode = repo.get_setting("bot_mode") or "paper"
-        kite_client = kite_auth.get_kite_client() if mode == "live" else None
+    def execute_order(self, intent_id: str, user_id: str = "default") -> Dict:
+        kite = KiteAuthManager(user_id)
+        mode = repo.get_setting("bot_mode", user_id=user_id) or "paper"
+        kite_client = kite.get_kite_client() if mode == "live" else None
 
-        # Inject signal price into intent dict before execution
-        intent = repo.get_order_intent(intent_id)
+        intent = repo.get_order_intent(intent_id, user_id=user_id)
         if intent is not None:
-            price_str = repo.get_setting(f"signal_price_{intent_id}")
+            price_str = repo.get_setting(f"signal_price_{intent_id}", user_id=user_id)
             if price_str:
                 try:
                     intent["signal_price"] = float(price_str)
@@ -309,32 +307,32 @@ class BotService:
 
     # ---- Risk status (real DB query) ----
 
-    def risk_status(self) -> RiskStatusResponse:
-        capital_str = repo.get_setting("bot_capital") or "100000"
+    def risk_status(self, user_id: str = "default") -> RiskStatusResponse:
+        capital_str = repo.get_setting("bot_capital", user_id=user_id) or "100000"
         try:
             capital = float(capital_str)
         except ValueError:
             capital = 100000.0
 
-        daily_loss_cap_str = repo.get_setting("daily_loss_cap_pct") or "2.0"
+        daily_loss_cap_str = repo.get_setting("daily_loss_cap_pct", user_id=user_id) or "2.0"
         try:
             daily_loss_cap_pct = float(daily_loss_cap_str)
         except ValueError:
             daily_loss_cap_pct = 2.0
 
-        max_trades_str = repo.get_setting("max_trades_per_day") or "3"
+        max_trades_str = repo.get_setting("max_trades_per_day", user_id=user_id) or "3"
         try:
             max_trades_per_day = int(max_trades_str)
         except ValueError:
             max_trades_per_day = 3
 
-        trades_taken = repo.get_today_trade_count()
-        today_pnl = repo.get_today_pnl()
+        trades_taken = repo.get_today_trade_count(user_id=user_id)
+        today_pnl = repo.get_today_pnl(user_id=user_id)
 
         daily_loss_limit = capital * (daily_loss_cap_pct / 100.0)
         daily_loss_used_pct = (abs(min(today_pnl, 0)) / max(daily_loss_limit, 1.0)) * 100.0
 
-        open_positions = len(repo.get_open_paper_positions())
+        open_positions = len(repo.get_open_paper_positions(user_id=user_id))
 
         return RiskStatusResponse(
             date=date.today(),
@@ -348,26 +346,29 @@ class BotService:
 
     # ---- Kite auth ----
 
-    def kite_login_url(self) -> str:
-        session = kite_auth.load_session()
+    def kite_login_url(self, user_id: str = "default") -> str:
+        kite = KiteAuthManager(user_id)
+        session = kite.load_session()
         if not session or not session.get("api_key"):
             raise ValueError("No API key saved. Please save credentials first.")
-        return kite_auth.get_login_url(session["api_key"])
+        return kite.get_login_url(session["api_key"])
 
-    def kite_callback(self, req: KiteCallbackRequest) -> Dict:
-        session = kite_auth.complete_login(req.api_key, req.api_secret, req.request_token)
+    def kite_callback(self, req: KiteCallbackRequest, user_id: str = "default") -> Dict:
+        kite = KiteAuthManager(user_id)
+        session = kite.complete_login(req.api_key, req.api_secret, req.request_token)
         return {
             "connected": True,
             "user_name": session.get("user_name", ""),
             "user_id": session.get("user_id", ""),
         }
 
-    def kite_status(self) -> KiteStatusResponse:
-        connected = kite_auth.is_connected()
-        has_creds = kite_auth.has_credentials()
-        profile = kite_auth.get_profile() if connected else None
-        margin = kite_auth.get_available_margin() if connected else None
-        masked_key = kite_auth.get_masked_api_key()
+    def kite_status(self, user_id: str = "default") -> KiteStatusResponse:
+        kite = KiteAuthManager(user_id)
+        connected = kite.is_connected()
+        has_creds = kite.has_credentials()
+        profile = kite.get_profile() if connected else None
+        margin = kite.get_available_margin() if connected else None
+        masked_key = kite.get_masked_api_key()
         return KiteStatusResponse(
             connected=connected,
             profile_name=profile["user_name"] if profile else None,
@@ -376,25 +377,26 @@ class BotService:
             masked_api_key=masked_key,
         )
 
-    def save_kite_credentials(self, api_key: str, api_secret: str) -> None:
-        kite_auth.save_credentials(api_key, api_secret)
+    def save_kite_credentials(self, api_key: str, api_secret: str, user_id: str = "default") -> None:
+        KiteAuthManager(user_id).save_credentials(api_key, api_secret)
 
-    def kite_disconnect(self) -> None:
-        kite_auth.disconnect()
+    def kite_disconnect(self, user_id: str = "default") -> None:
+        KiteAuthManager(user_id).disconnect()
 
     # ---- Bot settings ----
 
-    def get_settings(self) -> BotSettings:
-        mode = repo.get_setting("bot_mode") or "paper"
-        capital_str = repo.get_setting("bot_capital") or "100000"
+    def get_settings(self, user_id: str = "default") -> BotSettings:
+        kite = KiteAuthManager(user_id)
+        mode = repo.get_setting("bot_mode", user_id=user_id) or "paper"
+        capital_str = repo.get_setting("bot_capital", user_id=user_id) or "100000"
         try:
             capital = float(capital_str)
         except ValueError:
             capital = 100000.0
 
-        per_trade_risk_str = repo.get_setting("per_trade_risk_pct") or "0.75"
-        daily_loss_cap_str = repo.get_setting("daily_loss_cap_pct") or "2.0"
-        max_trades_str = repo.get_setting("max_trades_per_day") or "3"
+        per_trade_risk_str = repo.get_setting("per_trade_risk_pct", user_id=user_id) or "0.75"
+        daily_loss_cap_str = repo.get_setting("daily_loss_cap_pct", user_id=user_id) or "2.0"
+        max_trades_str = repo.get_setting("max_trades_per_day", user_id=user_id) or "3"
 
         risk_config = RiskConfig(
             capital=capital,
@@ -403,7 +405,7 @@ class BotService:
             max_trades_per_day=int(max_trades_str),
         )
 
-        masked_key = kite_auth.get_masked_api_key()
+        masked_key = kite.get_masked_api_key()
 
         return BotSettings(
             mode=mode,
@@ -412,32 +414,32 @@ class BotService:
             api_key=masked_key,
         )
 
-    def save_settings(self, settings: BotSettings) -> None:
-        repo.save_setting("bot_mode", settings.mode)
-        repo.save_setting("bot_capital", str(settings.capital))
-        repo.save_setting("per_trade_risk_pct", str(settings.risk_config.per_trade_risk_pct))
-        repo.save_setting("daily_loss_cap_pct", str(settings.risk_config.daily_loss_cap_pct))
-        repo.save_setting("max_trades_per_day", str(settings.risk_config.max_trades_per_day))
+    def save_settings(self, settings: BotSettings, user_id: str = "default") -> None:
+        repo.save_setting("bot_mode", settings.mode, user_id=user_id)
+        repo.save_setting("bot_capital", str(settings.capital), user_id=user_id)
+        repo.save_setting("per_trade_risk_pct", str(settings.risk_config.per_trade_risk_pct), user_id=user_id)
+        repo.save_setting("daily_loss_cap_pct", str(settings.risk_config.daily_loss_cap_pct), user_id=user_id)
+        repo.save_setting("max_trades_per_day", str(settings.risk_config.max_trades_per_day), user_id=user_id)
 
         if settings.api_key and not settings.api_key.endswith("****"):
             api_secret = settings.api_secret or ""
-            kite_auth.save_credentials(settings.api_key, api_secret)
+            KiteAuthManager(user_id).save_credentials(settings.api_key, api_secret)
 
     # ---- Bot on/off ----
 
-    def get_bot_status(self) -> BotStatusResponse:
-        is_running = (repo.get_setting("bot_running") or "false") == "true"
-        mode = repo.get_setting("bot_mode") or "paper"
-        trades_taken = repo.get_today_trade_count()
-        today_pnl = repo.get_today_pnl()
+    def get_bot_status(self, user_id: str = "default") -> BotStatusResponse:
+        is_running = (repo.get_setting("bot_running", user_id=user_id) or "false") == "true"
+        mode = repo.get_setting("bot_mode", user_id=user_id) or "paper"
+        trades_taken = repo.get_today_trade_count(user_id=user_id)
+        today_pnl = repo.get_today_pnl(user_id=user_id)
 
-        capital_str = repo.get_setting("bot_capital") or "100000"
+        capital_str = repo.get_setting("bot_capital", user_id=user_id) or "100000"
         try:
             capital = float(capital_str)
         except ValueError:
             capital = 100000.0
 
-        daily_loss_cap_str = repo.get_setting("daily_loss_cap_pct") or "2.0"
+        daily_loss_cap_str = repo.get_setting("daily_loss_cap_pct", user_id=user_id) or "2.0"
         try:
             daily_loss_cap_pct = float(daily_loss_cap_str)
         except ValueError:
@@ -454,20 +456,22 @@ class BotService:
             risk_used_pct=round(risk_used_pct, 2),
         )
 
-    def toggle_bot(self, enabled: bool) -> Dict:
-        repo.save_setting("bot_running", "true" if enabled else "false")
+    def toggle_bot(self, enabled: bool, user_id: str = "default") -> Dict:
+        repo.save_setting("bot_running", "true" if enabled else "false", user_id=user_id)
         return {"is_running": enabled}
 
     # ---- Live positions / orders ----
 
-    def get_live_positions(self) -> List[Dict]:
-        mode = repo.get_setting("bot_mode") or "paper"
-        kite_client = kite_auth.get_kite_client() if mode == "live" else None
+    def get_live_positions(self, user_id: str = "default") -> List[Dict]:
+        kite = KiteAuthManager(user_id)
+        mode = repo.get_setting("bot_mode", user_id=user_id) or "paper"
+        kite_client = kite.get_kite_client() if mode == "live" else None
         return live_trading.get_live_positions(mode, kite_client)
 
-    def get_live_orders_today(self) -> List[Dict]:
-        mode = repo.get_setting("bot_mode") or "paper"
-        kite_client = kite_auth.get_kite_client() if mode == "live" else None
+    def get_live_orders_today(self, user_id: str = "default") -> List[Dict]:
+        kite = KiteAuthManager(user_id)
+        mode = repo.get_setting("bot_mode", user_id=user_id) or "paper"
+        kite_client = kite.get_kite_client() if mode == "live" else None
         return live_trading.get_live_orders_today(mode, kite_client)
 
     # ---- Audit ----

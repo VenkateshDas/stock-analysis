@@ -6,8 +6,9 @@ import uuid
 from datetime import date, datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.v1.auth import AuthUser, get_current_user
 from app.bot.storage import repo
 from app.models.paper_trade import (
     ExitAlert,
@@ -32,8 +33,8 @@ _TIME_STOP_DAYS = 20
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _get_virtual_capital() -> float:
-    val = repo.get_setting(_VIRTUAL_CAPITAL_KEY)
+def _get_virtual_capital(user_id: str = "default") -> float:
+    val = repo.get_setting(_VIRTUAL_CAPITAL_KEY, user_id=user_id)
     return float(val) if val else _DEFAULT_CAPITAL
 
 
@@ -158,16 +159,19 @@ def _enrich(trade: PaperTrade) -> PaperTradeLiveStatus:
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 @router.get("/settings")
-async def get_settings():
-    return {"virtual_capital": _get_virtual_capital()}
+async def get_settings(current_user: AuthUser = Depends(get_current_user)):
+    return {"virtual_capital": _get_virtual_capital(user_id=current_user.id)}
 
 
 @router.put("/settings")
-async def update_settings(body: dict):
+async def update_settings(
+    body: dict,
+    current_user: AuthUser = Depends(get_current_user),
+):
     capital = body.get("virtual_capital")
     if capital and float(capital) > 0:
-        repo.save_setting(_VIRTUAL_CAPITAL_KEY, str(float(capital)))
-    return {"virtual_capital": _get_virtual_capital()}
+        repo.save_setting(_VIRTUAL_CAPITAL_KEY, str(float(capital)), user_id=current_user.id)
+    return {"virtual_capital": _get_virtual_capital(user_id=current_user.id)}
 
 
 # ── Position sizing calculator ────────────────────────────────────────────────
@@ -178,8 +182,9 @@ async def calculate_sizing(
     stop_price: float,
     target_price: float,
     virtual_capital: Optional[float] = None,
+    current_user: AuthUser = Depends(get_current_user),
 ):
-    cap = virtual_capital or _get_virtual_capital()
+    cap = virtual_capital or _get_virtual_capital(user_id=current_user.id)
     stop_dist = entry_price - stop_price
     if stop_dist <= 0:
         raise HTTPException(status_code=400, detail="Stop must be below entry price")
@@ -208,41 +213,53 @@ async def calculate_sizing(
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 @router.post("", response_model=PaperTradeLiveStatus)
-async def create_trade(body: PaperTradeCreate):
-    cap = body.virtual_capital or _get_virtual_capital()
+async def create_trade(
+    body: PaperTradeCreate,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    cap = body.virtual_capital or _get_virtual_capital(user_id=current_user.id)
     shares = _compute_shares(body.entry_price, body.stop_price, cap)
     trade_id = str(uuid.uuid4())
     entry_date = date.today().isoformat()
-    repo.create_paper_trade(body, trade_id, shares, entry_date)
-    trade = repo.get_paper_trade(trade_id)
+    repo.create_paper_trade(body, trade_id, shares, entry_date, user_id=current_user.id)
+    trade = repo.get_paper_trade(trade_id, user_id=current_user.id)
     if not trade:
         raise HTTPException(status_code=500, detail="Failed to save trade")
     return _enrich(trade)
 
 
 @router.get("", response_model=List[PaperTradeLiveStatus])
-async def list_trades(open_only: bool = False):
-    trades = repo.list_paper_trades(open_only=open_only)
+async def list_trades(
+    open_only: bool = False,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    trades = repo.list_paper_trades(open_only=open_only, user_id=current_user.id)
     return [_enrich(t) for t in trades]
 
 
 @router.get("/{trade_id}", response_model=PaperTradeLiveStatus)
-async def get_trade(trade_id: str):
-    trade = repo.get_paper_trade(trade_id)
+async def get_trade(
+    trade_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    trade = repo.get_paper_trade(trade_id, user_id=current_user.id)
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     return _enrich(trade)
 
 
 @router.put("/{trade_id}/close", response_model=PaperTrade)
-async def close_trade(trade_id: str, body: PaperTradeCloseRequest):
-    trade = repo.get_paper_trade(trade_id)
+async def close_trade(
+    trade_id: str,
+    body: PaperTradeCloseRequest,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    trade = repo.get_paper_trade(trade_id, user_id=current_user.id)
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     if trade.status != TradeStatus.OPEN:
         raise HTTPException(status_code=400, detail="Trade is already closed")
 
-    # Determine status from exit vs entry
     if body.exit_price >= trade.target_price:
         status = TradeStatus.TARGET_HIT
     elif body.exit_price <= trade.stop_price:
@@ -250,13 +267,16 @@ async def close_trade(trade_id: str, body: PaperTradeCloseRequest):
     else:
         status = TradeStatus.CLOSED
 
-    repo.close_paper_trade(trade_id, status, body.exit_price)
-    updated = repo.get_paper_trade(trade_id)
+    repo.close_paper_trade(trade_id, status, body.exit_price, user_id=current_user.id)
+    updated = repo.get_paper_trade(trade_id, user_id=current_user.id)
     return updated
 
 
 @router.delete("/{trade_id}")
-async def delete_trade(trade_id: str):
-    if not repo.delete_paper_trade(trade_id):
+async def delete_trade(
+    trade_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    if not repo.delete_paper_trade(trade_id, user_id=current_user.id):
         raise HTTPException(status_code=404, detail="Trade not found")
     return {"status": "deleted"}

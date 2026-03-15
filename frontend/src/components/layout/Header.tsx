@@ -1,8 +1,11 @@
 import { useMarketStore } from '../../store/useMarketStore'
-import { Link } from 'react-router-dom'
+import { useAuthStore } from '../../store/useAuthStore'
+import { Link, useNavigate } from 'react-router-dom'
 
 export function Header() {
   const { lastRefresh, indicesLoading, refreshAll } = useMarketStore()
+  const { isAuthenticated, username, logout } = useAuthStore()
+  const navigate = useNavigate()
 
   const now = new Date()
   const dateStr = now.toLocaleDateString('en-US', {
@@ -107,6 +110,17 @@ export function Header() {
             </svg>
             Refresh
           </button>
+          {isAuthenticated && (
+            <div className="hidden sm:flex items-center gap-2 text-xs text-text-muted">
+              <span className="font-medium text-text-secondary">{username}</span>
+              <button
+                onClick={() => { logout(); navigate('/login') }}
+                className="px-2.5 py-1.5 rounded-lg border border-border bg-surface text-text-secondary hover:text-text-primary hover:bg-bg transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

@@ -45,6 +45,10 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup():
+        from app.bot.storage.migrations import run_migrations
+        run_migrations()
+        if settings.jwt_secret == "change-me-in-production":
+            logger.warning("JWT_SECRET is using the default value — set JWT_SECRET in .env!")
         logger.info("Global Market Analysis API started")
         logger.info(f"OpenRouter API key configured: {bool(settings.openrouter_api_key)}")
         logger.info(f"Cache TTL: {settings.cache_ttl_seconds}s")
