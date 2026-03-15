@@ -28,25 +28,11 @@ export default function App() {
             <Layout>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/screener" element={<Screener />} />
-                <Route
-                  path="/bot"
-                  element={
-                    <RequireAuth>
-                      <BotLab />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/paper-trades"
-                  element={
-                    <RequireAuth>
-                      <PaperTrades />
-                    </RequireAuth>
-                  }
-                />
-                <Route path="/stock/:ticker" element={<StockDetail />} />
-                <Route path="/:symbol" element={<IndexDetail />} />
+                <Route path="/screener" element={<RequireAuth><Screener /></RequireAuth>} />
+                <Route path="/bot" element={<RequireAuth><BotLab /></RequireAuth>} />
+                <Route path="/paper-trades" element={<RequireAuth><PaperTrades /></RequireAuth>} />
+                <Route path="/stock/:ticker" element={<RequireAuth><StockDetail /></RequireAuth>} />
+                <Route path="/:symbol" element={<RequireAuth><IndexDetail /></RequireAuth>} />
               </Routes>
             </Layout>
           }

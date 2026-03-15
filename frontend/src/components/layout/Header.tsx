@@ -110,7 +110,7 @@ export function Header() {
             </svg>
             Refresh
           </button>
-          {isAuthenticated && (
+          {isAuthenticated ? (
             <div className="hidden sm:flex items-center gap-2 text-xs text-text-muted">
               <span className="font-medium text-text-secondary">{username}</span>
               <button
@@ -120,6 +120,13 @@ export function Header() {
                 Sign out
               </button>
             </div>
+          ) : (
+            <Link
+              to="/login"
+              className="hidden sm:block px-3.5 py-2 rounded-lg border border-accent text-accent text-sm font-semibold hover:bg-accent hover:text-white transition-colors"
+            >
+              Sign in
+            </Link>
           )}
         </div>
       </div>
