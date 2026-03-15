@@ -3,6 +3,7 @@ yf.download() call, computes all technical indicators locally, then applies
 condition-based filtering.  This avoids per-symbol API calls and the associated
 Yahoo Finance rate-limit errors.
 """
+import gc
 import logging
 import math
 import time
@@ -545,6 +546,7 @@ def _batch_fetch_indicators(symbols: List[str], interval: str) -> Dict[str, Dict
         f"Batch indicators: {len(result)}/{len(deduped)} symbols computed "
         f"in {math.ceil(len(deduped) / _BATCH_SIZE)} download calls"
     )
+    gc.collect()  # reclaim memory from large intermediate DataFrames
     return result
 
 

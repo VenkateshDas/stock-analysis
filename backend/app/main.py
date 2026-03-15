@@ -1,6 +1,9 @@
+import asyncio
+import gc
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import logging
 
 from app.config import settings
 from app.api.v1.router import api_router
@@ -45,6 +48,29 @@ def create_app() -> FastAPI:
         logger.info("Global Market Analysis API started")
         logger.info(f"OpenRouter API key configured: {bool(settings.openrouter_api_key)}")
         logger.info(f"Cache TTL: {settings.cache_ttl_seconds}s")
+        asyncio.create_task(_periodic_cache_cleanup())
+
+    async def _periodic_cache_cleanup():
+        """Sweep all TTL caches every 5 minutes and release memory."""
+        from app.services.cache import (
+            market_cache, analysis_cache, llm_cache, trend_cache,
+            opening_range_cache, stock_info_cache, heatmap_cache,
+            pcr_cache, opportunities_cache, screener_cache,
+        )
+        all_caches = [
+            market_cache, analysis_cache, llm_cache, trend_cache,
+            opening_range_cache, stock_info_cache, heatmap_cache,
+            pcr_cache, opportunities_cache, screener_cache,
+        ]
+        while True:
+            await asyncio.sleep(300)  # every 5 minutes
+            try:
+                total_evicted = sum(c.evict_expired() for c in all_caches)
+                if total_evicted:
+                    gc.collect()
+                    logger.info(f"Cache cleanup: evicted {total_evicted} expired entries")
+            except Exception as exc:
+                logger.warning(f"Cache cleanup error: {exc}")
 
     return app
 
