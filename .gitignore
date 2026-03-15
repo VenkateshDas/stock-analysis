@@ -28,8 +28,7 @@ frontend/.vite/
 frontend/tsconfig.tsbuildinfo
 
 # Bot data / session
-backend/app/bot/data/
-data/
+/data/
 *.db
 *.sqlite
 *.sqlite3
