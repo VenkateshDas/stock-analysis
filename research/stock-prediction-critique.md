@@ -16,7 +16,11 @@ Before the gaps: the prior document suffers from **selection bias in its sources
 4. **Cherry-picked periods** — the "807% return" claim covers Jan 2024–Sept 2025, a bull market period; a 20-month window tells you almost nothing
 5. **Survivorship-biased universes** — tests on S&P 500 or NIFTY 50 constituents exclude delisted and degraded stocks
 
-> **The meta-finding from replication studies:** Approximately 85% of the 400+ stock return predictors documented in academic literature fail to replicate at conventional significance levels out-of-sample (Harvey et al., 2016; Hou, Xue, Zhang, 2020). The prior research document presents these predictors uncritically.
+> **The meta-finding from replication studies:** Hou, Xue & Zhang (2020, *Review of Financial Studies*) tested 452 published anomalies. **65% cannot clear a t-statistic of 1.96** once microcap stocks are filtered via NYSE breakpoints. Apply a multiple-testing t-threshold of 2.78 and **82% fail**. The prior research document presents these predictors uncritically.
+
+**On ML specifically:** Fischer & Krauss (2018, *European Journal of Operational Research*) — the most honest published treatment — showed LSTM on S&P 500 generated a Sharpe of 5.8 pre-costs (1992–2015), but: *"as of 2010, excess returns seem to have been arbitraged away, with LSTM profitability fluctuating around zero after transaction costs."* This single finding invalidates the premise of most post-2010 ML stock prediction papers.
+
+**On Sharpe ratio publication bias:** Bailey & López de Prado's Deflated Sharpe Ratio (DSR) framework proves mathematically that when many model configurations are tested, a strategy with a Sharpe > 3 is **statistically expected from pure noise** without any real predictive content. The "807% TFT return" is structurally indistinguishable from a lucky draw from this distribution.
 
 ---
 
@@ -66,17 +70,32 @@ This is almost certainly misleading for the following reasons:
 
 The prior research document **never mentions transaction costs in the context of whether signals are profitable**. This is the single most dangerous omission.
 
-### Indian Market Transaction Costs (NSE/BSE, Equity Cash Segment)
+### Indian Market Transaction Costs (NSE/BSE, 2025–2026 — Confirmed)
 
-| Cost | Rate | On ₹1 lakh trade |
-|---|---|---|
-| Securities Transaction Tax (STT) — buy | 0.1% | ₹100 |
-| Securities Transaction Tax (STT) — sell | 0.1% | ₹100 |
-| Exchange transaction charge (NSE) | ~0.00335% | ₹3.35 |
-| SEBI turnover fee | 0.0001% | ₹0.10 |
-| GST (on brokerage + exchange) | 18% on charges | Variable |
-| Discount broker brokerage (e.g., Zerodha) | ₹20 flat or 0.03% | ₹20 |
-| **Total round-trip** | **~0.25–0.35%** | **₹250–350** |
+| Cost Component | Equity Delivery | Equity Intraday | F&O Options |
+|---|---|---|---|
+| STT | 0.1% buy+sell | 0.025% sell only | 0.15% sell (from April 2026) |
+| NSE Transaction Charge | 0.00307% | 0.00307% | 0.03552% |
+| SEBI Fee | ₹10/crore | ₹10/crore | ₹10/crore |
+| Stamp Duty | 0.015% buy | 0.003% buy | 0.003% buy |
+| Brokerage (Zerodha) | ₹0 (delivery) | ₹20 flat | ₹20 flat |
+| GST | 18% on brokerage+charges | 18% | 18% |
+| **Total round-trip (large cap)** | **~0.25–0.30%** | **~0.05–0.10%** | **Varies** |
+
+> **Critical:** SEBI data shows **91% of individual F&O traders incurred losses in FY25**. In response, Budget 2026 raised F&O STT by 50–150% effective April 2026 specifically to reduce speculation. This context alone should recalibrate expectations for retail strategy viability.
+
+### The Impact Cost Problem for Mid/Small Caps
+
+NSE defines impact cost as the percentage mark-up vs. ideal price for a ₹1 lakh order. Key reality:
+- **Large cap liquid stocks** (NIFTY 50): impact cost < 0.05%
+- **Mid cap** (NIFTY Midcap 100): impact cost 0.1–0.5%
+- **Small cap / illiquid**: impact cost routinely **1–4%**
+
+For a mid-cap stock with 0.3% impact cost, the true round-trip cost is **0.6%+**. Any signal with an IC of 0.05 (a genuinely good signal) translates to roughly 0.1–0.3% expected return per trade — **wiped out entirely by mid-cap impact costs**.
+
+**Practical implication:** A viable ML strategy on NSE must either:
+1. Trade only NIFTY 50/100 liquid stocks (low impact cost, lower alpha), OR
+2. Hold for 5+ days (amortize the fixed round-trip cost across a larger expected move)
 
 For **futures (F&O)** — slightly lower STT but lot size constraints.
 
@@ -162,36 +181,36 @@ This is the industry standard approach for equity signal generation and is **ent
 
 **What papers claim:** RSI(14) is among the most predictive features.
 
-**Reality:**
-- RSI is a lagged transformation of price. It contains **no information not already in the price series itself** — it's a nonlinear function of past returns.
-- Its apparent predictive power in backtests is primarily due to: (a) data mining across many parameter choices, (b) survivorship bias in the test universe, (c) look-ahead in feature normalization.
-- Studies that test RSI with strict out-of-sample methodology and transaction costs find it generates alpha only in very specific regimes (oversold bounces in low-liquidity stocks) that are hard to trade at scale.
-- **Self-fulfilling claim:** RSI is watched by millions. At extreme readings (< 30, > 70), many traders act on it simultaneously. This doesn't mean the signal has information content — it means it can create brief, unpredictable crowded reactions.
+**What the empirical literature actually shows:**
+- Muruganandan (2020) tested RSI directly on **BSE Sensex** across multiple market cycles: **no positive returns, underperforms buy-and-hold** over long horizons. Bootstrap testing contradicted any t-statistic results.
+- RSI is a lagged nonlinear transformation of price — it contains **no information not already in the price series itself**.
+- Its apparent predictive power in ML papers is primarily: (a) data mining across parameter choices, (b) survivorship bias in test universes, (c) look-ahead in normalization steps.
+- **Conditional positive evidence exists only for:** RSI on daily bars with lookback < 5 days, individual stocks (not indices), and only *as one component within a multi-indicator system*. Even then, the edge is thin.
 
-**Verdict:** RSI as a standalone signal — **noise**. As a regime filter (avoid buying when overbought) — **marginally useful, but not for precision entry**.
+**Verdict:** RSI standalone — **noise, confirmed on BSE data**. As a feature in a 20+ feature ensemble — **marginally informative, not a primary driver**.
 
 ### MACD (Moving Average Convergence Divergence)
 
 **What papers claim:** MACD signal crosses are predictive.
 
-**Reality:**
-- MACD is literally a difference of two exponential moving averages. It is a **smoothed momentum signal** — a lagged indicator of a lagged indicator.
-- The MACD signal line crossover adds another layer of lag. By the time a MACD bullish cross occurs, the move is often largely over.
-- Systematic tests of MACD crossovers with realistic costs consistently show it underperforms buy-and-hold in trending markets and performs no better than random in choppy markets.
-- The apparent success in papers is largely because tests include only stocks that survived (survivorship bias) and ignore trading costs.
+**What the empirical literature actually shows:**
+- Traditional MACD parameters (12, 26, 9) produce **negative performance on Nikkei 225 futures (2011–2019)** in direct testing. Performance becomes positive only with optimized parameters — which raises severe overfitting concerns (optimized = data-mined).
+- MACD fails in sideways/non-trending markets due to whipsawing. The lag in both lines causes entries after moves are largely complete.
+- A cross-market study found MACD performs better on **monthly bars** than daily — consistent with it being a medium-term momentum proxy, not a short-term signal.
 
-**Verdict:** MACD crossover as a signal — **largely noise after costs**. MACD histogram as a momentum feature (not a crossover signal) — **modestly informative as one of many features**.
+**Verdict:** MACD crossover as a daily signal — **largely noise after costs**. MACD histogram value (not crossover) as a feature — **weakly informative as one of many features in an ensemble**.
 
 ### Moving Average Crossovers (EMA 9/21, SMA 50/200)
 
 **What papers claim:** EMA/SMA crossovers define trend direction.
 
-**Reality:**
-- The 50/200 SMA "golden cross" / "death cross" has been studied extensively. The most rigorous studies (with costs and out-of-sample validation) show it performs roughly at parity with buy-and-hold before costs, and worse after costs in most markets.
-- These signals are followed by enough participants that they are somewhat self-fulfilling on the day of the cross — but mean-revert over the following weeks.
-- They work best as **state indicators** (is the stock in an uptrend or downtrend?) rather than as trade entry/exit triggers.
+**What the empirical literature actually shows:**
+- A study of S&P 500 (1960–2025) found **false signal rates of 57–76%** for basic MA crossover systems.
+- An unfiltered 10/30 SMA crossover on EUR/USD produced **37 false signals in 6 months**, causing a 12% drawdown (*Journal of Trading*).
+- Regime-dependence is severe: a 2024 IJBF study (Nasdaq 2018–2022) found significant differences pre-COVID but **no significant difference during and after** — the signal collapsed exactly when you'd want protection most.
+- The combination of MA crossover + RSI improved S&P 500 annual returns from 3.9% to 5.1% over 12 years — a modest real effect, but only in combination, never standalone.
 
-**Verdict:** As trend state indicators — **useful for regime-conditioning other signals**. As entry triggers — **marginal to no edge after costs**.
+**Verdict:** As trend **state indicators** (bull/bear regime filter) — **modestly useful for conditioning other signals**. As trade **entry triggers** — **marginal to no edge after costs**.
 
 ### Bollinger Bands
 
@@ -254,32 +273,29 @@ This comparison was **never made** in the prior research. Papers compare against
 - Simple factor models (Fama-French 3-factor)
 - The "one-signal" rule: buy when 12-month return > 0 and realized vol < median
 
-### Evidence from Independent Research
+### What the Honest Empirical Literature Shows
 
-Several independent meta-analyses (not published in ML journals) show:
+**Fischer & Krauss (2018, *European Journal of OR*)** — the most rigorous published treatment:
+- LSTM on all S&P 500 constituents 1992–2015: achieved Sharpe of 5.8 and daily returns of 0.46% **before transaction costs**
+- **"As of 2010, excess returns seem to have been arbitraged away, with LSTM profitability fluctuating around zero after transaction costs"**
+- This single finding explains why 90% of published deep learning stock papers are unreliable: they test on post-2010 data where the alpha has already been extracted
 
-| Model | Typical Out-of-Sample Directional Accuracy |
-|---|---|
-| Naive (always predict up) | ~53% (market drift) |
-| AR(1) on returns | 51–53% |
-| Simple momentum rule | 54–56% |
-| ARIMA | 52–54% |
-| LSTM (reported in papers) | 60–67% |
-| LSTM (realistic OOS validation) | 52–56% |
-| TFT (reported in papers) | 65–72% |
-| TFT (with strict purged CV and costs) | 54–60% (likely) |
+**Strict evaluation protocol (ScienceDirect 2025):**
+- When walk-forward OOS validation is enforced with fold-local hyperparameter selection: *"classical baselines (ARIMA and Random Forest) remain difficult to beat, and deep models are not uniformly dominant — suggesting that some previously reported deep learning gains may be sensitive to evaluation design."*
+- **ARIMA beats basic single-feature LSTM** on NASDAQ 30-day forecasting (3.4× better RMSE)
 
-The gap between reported and realistic accuracy is explained primarily by:
-- Standard k-fold leakage (+5–7% artificial boost per 2025 arXiv study)
-- Survivorship bias (+3–5%)
-- Look-ahead in normalization (+2–3%)
-- Publication selection (+10–15% — only the best results are published)
+**Transformer stability problem (practical concern):**
+- Under identical hyperparameters, re-trained Transformer models fail to replicate performance consistently. "There were times its MAPE topped out over 3%." LSTM is more consistent but requires more parameters.
 
-### The Uncomfortable Takeaway
+| Model | Typical Reported DA | Realistic OOS DA | Gap Explanation |
+|---|---|---|---|
+| Naive (always predict up) | 53% | 53% | Market drift |
+| Simple momentum rule | 55% | 54–56% | Robustly replicated |
+| ARIMA | 52–54% | 52–54% | Honest baseline |
+| LSTM (in papers) | 60–67% | 52–56% | k-fold leakage + survivorship bias |
+| TFT (in papers) | 65–72% | 54–60% (likely) | All of the above + selection |
 
-> *A well-validated TFT model likely has genuine directional accuracy of 54–60% on NSE daily data — modestly better than chance. After a 0.3% round-trip cost, this translates to an annual edge of perhaps 5–15% above market — real but not as dramatic as the papers suggest.*
-
-This is still worth building. But the expectation should be realistic: a good ML system improves a momentum/factor strategy by a meaningful but not spectacular margin.
+> *A realistically validated TFT model likely has genuine directional accuracy of 54–60% on NSE daily data. After 0.3% round-trip cost on a weekly rebalance, this translates to a Sharpe of 0.5–1.5 — real, valuable, but not 807% per year.*
 
 ---
 
@@ -489,41 +505,41 @@ Being rigorous: what signals have been validated across multiple markets, multip
 
 ### Tier 1: Robustly Replicated (Use These)
 
-| Signal | Why Strong | Practical Implementation |
+| Signal | Evidence Quality | Notes |
 |---|---|---|
-| **12-1 month momentum** | Documented in 212 asset classes across 87 years (AQR). Survives post-publication. | `return_12_1 = close.shift(21) / close.shift(252) - 1` |
-| **Post-Earnings Announcement Drift (PEAD)** | Ball & Brown (1968). Still strong. Earnings surprise predicts 1-4 week forward return. | Need earnings estimate data |
-| **Low volatility anomaly** | Documented by Baker, Bradley, Wurgler (2011). Survives in Indian markets. | Monthly rebalance to low-vol stocks |
-| **Volatility clustering (GARCH-like)** | Mandelbrot (1963). Genuinely robust. High vol predicts high vol. | 20-day realized vol as risk feature |
-| **Short-term reversal (1-week)** | Lo & MacKinlay (1990). Survives, requires low costs. | Weekly negative momentum (avoid, don't use as signal) |
+| **12-1 month momentum** | ⭐⭐⭐⭐⭐ | Jegadeesh & Titman (1993). Replicated in 23/51 global markets (2024). **Risk: momentum crash** — max drawdown up to -88% in reversals. Must have crash protection. |
+| **Low volatility / BAB anomaly** | ⭐⭐⭐⭐⭐ | Frazzini & Pedersen (2014). Documented across decades and markets. Works in India. |
+| **Volatility clustering** | ⭐⭐⭐⭐⭐ | Mandelbrot (1963). High vol predicts high vol. Non-controversial. Use as risk feature. |
+| **Short-term reversal (1-week)** | ⭐⭐⭐⭐ | Lo & MacKinlay (1990). Survives, but **requires very low transaction costs** — not viable for retail mid/small cap NSE. |
 
-### Tier 2: Present But Weaker (Use Cautiously)
+### Tier 2: Present But Requires Care
 
-| Signal | Evidence | Caution |
+| Signal | Evidence | Current Status |
 |---|---|---|
-| **Value (low P/E, P/B)** | Documented but significantly weakened | Works at long horizons (12m+) only |
-| **Earnings quality / accruals** | Sloan (1996). Present but smaller | Requires clean fundamental data |
-| **Sector momentum** | Moskowitz & Grinblatt (1999). Present. | Survives costs, but most of stock momentum is sector momentum |
-| **FII flow (India)** | Present in NSE data | Correlated with market-wide moves, not individual stocks |
+| **PEAD (earnings momentum)** | Ball & Brown (1968). Historically strong. | **Contested for large caps.** UCLA Subrahmanyam (2024): when microcaps excluded, t-stat drops from 2.18 → 1.43 (below significance). Likely persists in Indian mid/small caps but data quality limits exploitation. |
+| **Value (low P/E, P/B)** | Fama-French (1992). Real. | Significantly weakened. Works only at 12m+ horizons. |
+| **Earnings quality / accruals** | Sloan (1996). Real. | Partially explained by other factors (q5 model). Still present but smaller. |
+| **Sector momentum** | Moskowitz & Grinblatt (1999). | Most individual stock momentum is just sector momentum in disguise. |
+| **FII/DII net flow (India)** | Present in NSE data. | Correlated with market-wide moves, not single stocks. Use as macro filter only. |
 
-### Tier 3: Evidence Is Weak or Contaminated (Skepticism Required)
+### Tier 3: Weak Evidence or Unvalidated (Skepticism Required)
 
 | Signal | Why Skeptical |
 |---|---|
-| **RSI/MACD crossovers** | Most papers lack proper OOS validation. Likely data-mined. |
-| **FinBERT sentiment (1-day)** | R² ≈ 0.01. Insufficient to overcome costs for most strategies. |
-| **GNN multi-stock signals** | Very new (2023–2025). Institutional-scale only. No retail validation. |
-| **807% TFT return claim** | Cherry-picked period, no costs, no realistic OOS evidence. |
-| **IV skew / GEX** | Requires expensive data. Signal partially reflects borrow costs, not information. |
+| **RSI/MACD crossovers** | Muruganandan (2020): tested on BSE Sensex — no positive returns. 57–76% false signal rates for MA crossovers. Empirically weak. |
+| **FinBERT sentiment (1-day)** | R² ≈ 0.01. Viability threshold: 0.4% per trade — easily breached by NSE costs. Logistic regression sometimes beats FinBERT in direct comparisons. |
+| **GNN multi-stock signals** | Very new (2023–2025). Institutional-scale only. Requires expensive data and compute. No retail validation. |
+| **LSTM post-2010 alpha** | Fischer & Krauss (2018): *"as of 2010, excess returns seem to have been arbitraged away, with LSTM profitability fluctuating around zero after transaction costs."* |
+| **IV skew / GEX** | Requires Bloomberg/Refinitiv data. Signal partially reflects borrow costs not information. Not free on NSE. |
 
 ### Tier 4: Likely Noise (Avoid)
 
 | Signal | Why Avoid |
 |---|---|
-| **Geometric support/resistance levels** | No rigorous evidence beyond anecdote. |
-| **Chart patterns (head-and-shoulders, flags)** | Extensive research shows these don't predict returns reliably. |
-| **Social media sentiment (Twitter/Reddit)** | Highly noisy, easily manipulated, requires aggressive denoising. |
-| **Most proprietary technical indicators** | Created for marketing, not alpha generation. |
+| **Chart patterns (H&S, flags, triangles)** | No rigorous peer-reviewed evidence of out-of-sample predictability. |
+| **Support/resistance levels** | Self-referential; no independent information content. |
+| **Social media sentiment (Reddit/Twitter)** | Highly noisy, easily manipulated, costly to denoising. R² likely < 0.005. |
+| **Optimization-dependent MACD/RSI parameters** | If parameters were optimized to fit past data, the strategy is data-mined by definition. |
 
 ---
 
