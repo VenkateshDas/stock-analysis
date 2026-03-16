@@ -52,6 +52,7 @@ class PaperTradeCreate(BaseModel):
     atr: float
     notes: Optional[str] = None
     virtual_capital: float = 100000.0
+    capital_deployed: Optional[float] = None
 
 
 class PaperTradeLiveStatus(BaseModel):

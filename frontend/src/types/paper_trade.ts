@@ -56,6 +56,7 @@ export interface PaperTradeCreate {
   atr: number
   notes?: string
   virtual_capital: number
+  capital_deployed?: number
 }
 
 export interface PositionSizingResult {

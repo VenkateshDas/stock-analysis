@@ -1048,7 +1048,7 @@ function AddTradeModal({ row, virtualCapital, presetId, onClose, onSaved }: AddT
         symbol: row.symbol, company_name: row.name, sector: row.sector,
         strategy: 'pullback', entry_price: entryN, stop_price: stopN,
         target_price: targetN, atr: row.atr ?? atr,
-        notes: notes || undefined, virtual_capital: virtualCapital,
+        notes: notes || undefined, virtual_capital: virtualCapital, capital_deployed: tradeCapitalN,
       })
       onSaved()
     } catch {

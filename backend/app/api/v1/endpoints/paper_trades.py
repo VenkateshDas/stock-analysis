@@ -218,7 +218,10 @@ async def create_trade(
     current_user: AuthUser = Depends(get_current_user),
 ):
     cap = body.virtual_capital or _get_virtual_capital(user_id=current_user.id)
-    shares = _compute_shares(body.entry_price, body.stop_price, cap)
+    if body.capital_deployed and body.capital_deployed > 0 and body.entry_price > 0:
+        shares = max(1, math.floor(body.capital_deployed / body.entry_price))
+    else:
+        shares = _compute_shares(body.entry_price, body.stop_price, cap)
     trade_id = str(uuid.uuid4())
     entry_date = date.today().isoformat()
     repo.create_paper_trade(body, trade_id, shares, entry_date, user_id=current_user.id)
