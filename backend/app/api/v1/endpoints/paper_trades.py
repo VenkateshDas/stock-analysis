@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import math
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time as dtime, timedelta
 from typing import List, Optional
 
+import numpy as np
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.auth import AuthUser, get_current_user
@@ -17,9 +19,12 @@ from app.models.paper_trade import (
     PaperTradeCreate,
     PaperTradeLiveStatus,
     PositionSizingResult,
+    ProjectionPoint,
+    TradeProjection,
     TradeStatus,
 )
 from app.services.analysis.previous_day import analysis_orchestrator
+from app.services.data_providers.yahoo import yahoo_provider
 
 router = APIRouter(prefix="/paper-trades")
 
@@ -156,6 +161,121 @@ def _enrich(trade: PaperTrade) -> PaperTradeLiveStatus:
     )
 
 
+# ── GBM Projection ───────────────────────────────────────────────────────────
+
+def _next_trading_days(start: date, n: int) -> list[date]:
+    """Return the next n Mon–Fri dates after start."""
+    result: list[date] = []
+    d = start
+    while len(result) < n:
+        d += timedelta(days=1)
+        if d.weekday() < 5:
+            result.append(d)
+    return result
+
+
+def _strip_tz(idx: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    return idx.tz_localize(None) if idx.tz is not None else idx
+
+
+def _gbm_projection(
+    ticker: str,
+    entry_price: float,
+    entry_date_str: Optional[str] = None,
+    project_days: int = 20,
+) -> Optional[TradeProjection]:
+    """
+    Geometric Brownian Motion projection.
+
+    Fetches 90 trading days of history to estimate:
+      μ  = mean of daily log-returns  (drift)
+      σ  = std  of daily log-returns  (volatility)
+
+    Then projects `project_days` trading days forward from entry_price:
+      mid(d)   = entry × exp(μ·d)
+      upper(d) = entry × exp(μ·d + σ·√d)   ← +1σ percentile
+      lower(d) = entry × exp(μ·d − σ·√d)   ← −1σ percentile
+
+    If entry_date_str is given, also returns actual closes since entry
+    and a direction indicator comparing current price to today's projected midline.
+    """
+    df = yahoo_provider.get_history(ticker, 90)
+    if df.empty or len(df) < 10:
+        return None
+
+    closes = df["Close"].values.astype(float)
+    log_ret = np.diff(np.log(closes))
+    mu = float(np.mean(log_ret))
+    sigma = float(np.std(log_ret, ddof=1))
+
+    # ── Build projection cone ────────────────────────────────────────────────
+    entry_dt = datetime.strptime(entry_date_str, "%Y-%m-%d").date() if entry_date_str else date.today()
+    entry_ts = int(datetime.combine(entry_dt, dtime(0, 0)).timestamp())
+
+    # Anchor point: d=0
+    proj: list[ProjectionPoint] = [
+        ProjectionPoint(time=entry_ts, mid=round(entry_price, 2),
+                        upper=round(entry_price, 2), lower=round(entry_price, 2))
+    ]
+    for i, td in enumerate(_next_trading_days(entry_dt, project_days), 1):
+        t_unix = int(datetime.combine(td, dtime(0, 0)).timestamp())
+        mid   = entry_price * math.exp(mu * i)
+        upper = entry_price * math.exp(mu * i + sigma * math.sqrt(i))
+        lower = entry_price * math.exp(mu * i - sigma * math.sqrt(i))
+        proj.append(ProjectionPoint(
+            time=t_unix,
+            mid=round(mid, 2), upper=round(upper, 2), lower=round(lower, 2),
+        ))
+
+    # ── Actual price path since entry (My Trades use-case) ──────────────────
+    actual: Optional[list[dict]] = None
+    direction: Optional[str] = None
+    direction_label: Optional[str] = None
+    direction_detail: Optional[str] = None
+
+    if entry_date_str:
+        entry_dt_pd = pd.Timestamp(entry_date_str).normalize()
+        idx_dates = _strip_tz(pd.DatetimeIndex(df.index)).normalize()
+        filtered = df[idx_dates >= entry_dt_pd]
+
+        if not filtered.empty:
+            actual = []
+            for raw_idx, row in filtered.iterrows():
+                ts_idx = pd.Timestamp(raw_idx)
+                if ts_idx.tz is not None:
+                    ts_idx = ts_idx.tz_localize(None)
+                actual.append({"time": int(ts_idx.timestamp()), "value": round(float(row["Close"]), 2)})
+
+            if actual:
+                current_price = actual[-1]["value"]
+                d_open = len(actual)          # trading days open
+                mid_now   = entry_price * math.exp(mu * d_open)
+                lower_now = entry_price * math.exp(mu * d_open - sigma * math.sqrt(d_open))
+
+                if current_price >= mid_now:
+                    direction = "on_track"
+                    direction_label = "On Track"
+                    direction_detail = "Price is tracking above the projected path — developing as expected"
+                elif current_price >= lower_now:
+                    direction = "stalling"
+                    direction_label = "Stalling"
+                    direction_detail = "Price is below the projected midline but within normal volatility range"
+                else:
+                    direction = "breaking_down"
+                    direction_label = "Breaking Down"
+                    direction_detail = "Price has fallen below the projected lower band — trade is off track"
+
+    return TradeProjection(
+        projection=proj,
+        actual=actual,
+        direction=direction,
+        direction_label=direction_label,
+        direction_detail=direction_detail,
+        mu_annual=round(mu * 252 * 100, 2),
+        sigma_annual=round(sigma * math.sqrt(252) * 100, 2),
+    )
+
+
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 @router.get("/settings")
@@ -208,6 +328,28 @@ async def calculate_sizing(
         max_loss=round(shares * stop_dist, 2),
         max_gain=round(shares * target_dist, 2),
     )
+
+
+# ── Projection ───────────────────────────────────────────────────────────────
+
+@router.get("/projection", response_model=TradeProjection)
+async def get_projection(
+    ticker: str,
+    entry_price: float,
+    stop_price: float,
+    target_price: float,
+    entry_date: Optional[str] = None,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    """
+    GBM-based projection cone for a trade.
+    Pass entry_date (YYYY-MM-DD) to also receive the actual price path
+    since entry and a direction indicator.
+    """
+    result = _gbm_projection(ticker, entry_price, entry_date_str=entry_date)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Insufficient historical data for projection")
+    return result
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────

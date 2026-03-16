@@ -87,3 +87,20 @@ class PositionSizingResult(BaseModel):
 
 class PaperTradeCloseRequest(BaseModel):
     exit_price: float
+
+
+class ProjectionPoint(BaseModel):
+    time: int        # unix timestamp (seconds)
+    mid: float
+    upper: float     # +1 σ band
+    lower: float     # −1 σ band
+
+
+class TradeProjection(BaseModel):
+    projection: List[ProjectionPoint]          # forward cone (20 trading days)
+    actual: Optional[List[dict]] = None        # [{time, value}] actual closes since entry
+    direction: Optional[str] = None            # "on_track" | "stalling" | "breaking_down"
+    direction_label: Optional[str] = None
+    direction_detail: Optional[str] = None
+    mu_annual: float                           # annualised drift %
+    sigma_annual: float                        # annualised volatility %

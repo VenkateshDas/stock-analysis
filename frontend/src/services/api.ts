@@ -19,7 +19,7 @@ import type {
 } from '../types/sector'
 import type { ScreenerCriteria, ScreenerFieldsResponse, ScreenerPreset, ScreenerResult } from '../types/screener'
 import type { HeatmapData } from '../types/heatmap'
-import type { PaperTradeCreate, PaperTradeLiveStatus, PaperTrade, PositionSizingResult } from '../types/paper_trade'
+import type { PaperTradeCreate, PaperTradeLiveStatus, PaperTrade, PositionSizingResult, TradeProjection } from '../types/paper_trade'
 import type {
   BacktestConfig,
   BacktestRunStatus,
@@ -245,6 +245,11 @@ export const api = {
 
   deletePaperTrade: (id: string) =>
     client.delete(`/paper-trades/${id}`).then((r) => r.data),
+
+  getTradeProjection: (ticker: string, entry_price: number, stop_price: number, target_price: number, entry_date?: string) =>
+    client.get<TradeProjection>('/paper-trades/projection', {
+      params: { ticker, entry_price, stop_price, target_price, entry_date },
+    }).then((r) => r.data),
 
   getMacro: () =>
     client.get<MacroSnapshot>('/macro').then((r) => r.data),

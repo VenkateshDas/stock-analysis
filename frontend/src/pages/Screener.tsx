@@ -779,12 +779,17 @@ function TradeChartPanel({
 
     let cancelled = false
 
-    api.getStockHistory(row.symbol, '1d').then((data) => {
+    Promise.all([
+      api.getStockHistory(row.symbol, '1d'),
+      api.getTradeProjection(row.symbol, entryN, stopN, targetN).catch(() => null),
+    ]).then(([data, proj]) => {
       if (cancelled || !containerRef.current) return
       setLoading(false)
 
       const container = containerRef.current
       const bars = data.bars.slice(-60)
+      const lastBar   = bars[bars.length - 1]
+      const lastBarTs = (lastBar.timestamp / 1000) as Time
 
       const chart = createChart(container, {
         width:  container.offsetWidth  || 360,
@@ -847,33 +852,43 @@ function TradeChartPanel({
       candle.createPriceLine({ price: stopN,   color: '#ef4444', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Stop'   })
       candle.createPriceLine({ price: targetN, color: '#22c55e', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Target' })
 
-      // ── ATR projection cone (next 15 days) ────────────────────────────
-      const atr      = row.atr ?? (row.price * 0.015)
-      const lastBar  = bars[bars.length - 1]
-      const lastClose = lastBar.close
-      const DAY_MS   = 86_400_000
-      const DAYS     = 15
-
-      const projMid:   { time: Time; value: number }[] = [{ time: (lastBar.timestamp / 1000) as Time, value: lastClose }]
-      const projUpper: { time: Time; value: number }[] = [{ time: (lastBar.timestamp / 1000) as Time, value: lastClose }]
-      const projLower: { time: Time; value: number }[] = [{ time: (lastBar.timestamp / 1000) as Time, value: lastClose }]
-
-      for (let d = 1; d <= DAYS; d++) {
-        const t   = ((lastBar.timestamp + d * DAY_MS) / 1000) as Time
-        const pct = d / DAYS
-        const mid  = lastClose + pct * (targetN - lastClose)
-        const band = atr * Math.sqrt(d) * 0.55
-        projMid.push({ time: t, value: mid })
-        projUpper.push({ time: t, value: Math.min(mid + band, targetN * 1.06) })
-        projLower.push({ time: t, value: Math.max(mid - band, stopN * 0.96) })
+      // ── GBM projection cone ───────────────────────────────────────────
+      // Snap the cone's anchor to the last historical bar for visual continuity
+      if (proj && proj.projection.length > 1) {
+        const snapProj = proj.projection.map((p, i) => ({
+          ...p, time: i === 0 ? lastBarTs : (p.time as Time),
+        }))
+        const midLine = chart.addLineSeries({ color: 'rgba(129,140,248,0.75)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false })
+        midLine.setData(snapProj.map(p => ({ time: p.time as Time, value: p.mid })))
+        const upperLine = chart.addLineSeries({ color: 'rgba(34,197,94,0.40)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
+        upperLine.setData(snapProj.map(p => ({ time: p.time as Time, value: p.upper })))
+        const lowerLine = chart.addLineSeries({ color: 'rgba(239,68,68,0.40)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
+        lowerLine.setData(snapProj.map(p => ({ time: p.time as Time, value: p.lower })))
+      } else {
+        // Fallback: ATR-based linear cone if backend projection unavailable
+        const atr      = row.atr ?? (row.price * 0.015)
+        const lastClose = lastBar.close
+        const DAY_MS   = 86_400_000
+        const DAYS     = 15
+        const projMid:   { time: Time; value: number }[] = [{ time: lastBarTs, value: lastClose }]
+        const projUpper: { time: Time; value: number }[] = [{ time: lastBarTs, value: lastClose }]
+        const projLower: { time: Time; value: number }[] = [{ time: lastBarTs, value: lastClose }]
+        for (let d = 1; d <= DAYS; d++) {
+          const t    = ((lastBar.timestamp + d * DAY_MS) / 1000) as Time
+          const pct  = d / DAYS
+          const mid  = lastClose + pct * (targetN - lastClose)
+          const band = atr * Math.sqrt(d) * 0.55
+          projMid.push({ time: t, value: mid })
+          projUpper.push({ time: t, value: Math.min(mid + band, targetN * 1.06) })
+          projLower.push({ time: t, value: Math.max(mid - band, stopN * 0.96) })
+        }
+        const midLine = chart.addLineSeries({ color: 'rgba(129,140,248,0.75)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false })
+        midLine.setData(projMid)
+        const upperLine = chart.addLineSeries({ color: 'rgba(34,197,94,0.45)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
+        upperLine.setData(projUpper)
+        const lowerLine = chart.addLineSeries({ color: 'rgba(239,68,68,0.45)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
+        lowerLine.setData(projLower)
       }
-
-      const midLine = chart.addLineSeries({ color: 'rgba(129,140,248,0.75)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false })
-      midLine.setData(projMid)
-      const upperLine = chart.addLineSeries({ color: 'rgba(34,197,94,0.45)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
-      upperLine.setData(projUpper)
-      const lowerLine = chart.addLineSeries({ color: 'rgba(239,68,68,0.45)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
-      lowerLine.setData(projLower)
 
       chart.timeScale().fitContent()
 
