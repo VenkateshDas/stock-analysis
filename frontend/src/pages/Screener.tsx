@@ -1471,11 +1471,11 @@ export function Screener() {
   const [searchParams] = useSearchParams()
   const {
     presets, fields, fieldMap,
-    indexSymbol, activePresetId, conditions,
+    indexSymbol, activePresetId, conditions, interval,
     results, isScanning, scanError, lastScanAt, fromCache,
     loadMeta, setIndex, applyPreset, clearPreset,
     addCondition, updateCondition, removeCondition, clearConditions,
-    runScan,
+    setInterval, runScan,
   } = useScreenerStore()
   const { virtualCapital, loadSettings } = usePaperTradeStore()
 
@@ -1636,6 +1636,18 @@ export function Screener() {
           {(isUS ? US_INDICES : INDIA_INDICES).map((i) => (
             <option key={i.value} value={i.value}>{i.label}</option>
           ))}
+        </select>
+
+        {/* Timeframe picker */}
+        <select
+          value={interval}
+          onChange={(e) => setInterval(e.target.value)}
+          className="text-sm font-semibold bg-surface border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-accent"
+          title="Data timeframe used for indicator calculations"
+        >
+          <option value="1d">Daily</option>
+          <option value="1h">1 Hour</option>
+          <option value="15m">15 Min</option>
         </select>
 
         {/* Active condition chips */}

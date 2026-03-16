@@ -63,6 +63,7 @@ interface ScreenerStore {
   updateCondition: (id: string, patch: Partial<ScreenerCondition>) => void
   removeCondition: (id: string) => void
   clearConditions: () => void
+  setInterval: (interval: string) => void
   runScan: () => Promise<void>
 }
 
@@ -141,6 +142,8 @@ export const useScreenerStore = create<ScreenerStore>((set, get) => ({
   },
 
   clearConditions: () => set({ conditions: [], activePresetId: null, results: null }),
+
+  setInterval: (interval) => set({ interval, results: null }),
 
   runScan: async () => {
     const { indexSymbol, conditions, activePresetId, interval } = get()
