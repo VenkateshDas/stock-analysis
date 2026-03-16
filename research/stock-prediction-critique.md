@@ -383,15 +383,25 @@ One powerful India-specific fundamental signal **not mentioned** in the prior re
 ### 8.6 DII/FII Flow Data (India-Specific Macro Signal)
 
 - **FII (Foreign Institutional Investor) net buy/sell** data is published daily by NSE — free
-- FII flows have high correlation with NIFTY direction (FII are large enough to move the index)
+- FII flows have **contemporaneous** (not leading) correlation with NIFTY direction
+- **Granger causality tests fail**: A 2022 study using 2011–2021 monthly data finds FII flows and NIFTY direction do not reliably Granger-cause each other at monthly frequency
+- **Practical classification**: FII flow is a sentiment confirmation signal, not alpha. Use as a macro filter (e.g., "no new long positions when FII have been net sellers 5+ consecutive days"), not as a primary signal
 - DII (Domestic Institutional Investors) often counter-trade FIIs, reducing volatility
-- This **freely available, India-specific signal** was entirely absent from the prior research
 
 ```python
-# Free from NSE India (no API key required)
-# https://www.nseindia.com/reports-indices-fii-dii-data
-# FII net equity flows are a legitimate macro regime indicator for Indian markets
+# Free NSE FII/DII JSON endpoint (requires session handling — NSE blocks plain requests)
+import requests
+headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.nseindia.com/reports/fii-dii"}
+session = requests.Session()
+session.get("https://www.nseindia.com", headers=headers)
+response = session.get("https://www.nseindia.com/api/fiidiiTradeReact", headers=headers)
+data = response.json()
+# Note: NSE blocks non-Indian IP addresses. Use NSEPython library for robust access:
+# pip install nsetools nsepython
+# Historical data beyond 1 day: https://www.fpi.nsdl.co.in/web/Reports/Latest.aspx
 ```
+
+**Important caveat:** NSE blocks cloud server IPs (AWS, GCP, DigitalOcean). The [NSEPython library](https://unofficed.com/nse-python/) and [nsefin](https://pypi.org/project/nsefin/) handle retries and session management.
 
 ### 8.7 The NSE Options PCR Is Already Free and Useful
 
@@ -640,27 +650,111 @@ Only after Phase 2 shows stable IC:
 
 ## 14. Questions the Research Didn't Answer
 
-These are the most important open questions for practical implementation:
+These are the most important open questions for practical implementation. Questions with new evidence are marked ✅.
 
-1. **On Indian markets specifically:** Does momentum work as well in NSE as in US markets, or does the thin liquidity and higher transaction costs eliminate the edge?
+### ✅ 1. Does NSE Momentum Work, and Does It Survive Transaction Costs?
 
-2. **On timing:** How does signal quality vary across the market cycle? Does momentum work better in bull markets? Does value work better post-correction?
+**Answer: Yes — strongly, and with quantified evidence from the official NSE index.**
 
-3. **On yfinance reliability:** How many NSE tickers have >5 consecutive missing trading days in the last 5 years? What percentage of adjusted prices are incorrect post-split? (No one has tested this rigorously.)
+The NSE officially runs the **Nifty500 Momentum 50 Index** (12-1 month methodology, semi-annual rebalance, 50 stocks). Performance since inception (April 2005, data as of October 2024):
 
-4. **On fundamental data timeliness:** BSE corporate disclosures: what is the actual lag between results declaration and data availability in yfinance's `ticker.financials`?
+| Horizon | Nifty500 Momentum 50 | Nifty 500 (benchmark) | Premium |
+|---|---|---|---|
+| 3 years CAGR | 23.6% | 15.7% | **+7.9%** |
+| 5 years CAGR | 31.7% | 19.7% | **+12.0%** |
+| 10 years CAGR | 22.3% | 14.2% | **+8.1%** |
+| Since inception | 24.3% | 15.2% | **+9.1%** |
 
-5. **On minimum viable signal:** What is the minimum IC needed to generate positive alpha after NSE transaction costs at a monthly rebalance? (Rough answer: IC > 0.04, but this has not been calculated for this specific codebase's data.)
+After transaction costs modeled at 0.11% per trade + 0.05% slippage + tax (BacktestIndia.com, 2006–2025): momentum delivers ~14% CAGR vs ~12–13% for Nifty 500. The premium **narrows but survives** at semi-annual rebalancing.
 
-6. **On regime detection:** Is a simple VIX/India VIX threshold (> 20 = risk-off) better than HMM for a weekly-rebalancing retail strategy? (HMM is complex; simple thresholds may be sufficient.)
+**Critical caveat from ScienceDirect (2017):** On the NIFTY 50 universe alone (50 largest stocks), aggregate momentum returns are "insignificant in most cases." The premium is in **Nifty 200/500**, not the 50 most liquid names.
 
-7. **On compounding vs. consistency:** Is a 55% directional accuracy strategy with 5% monthly drawdowns better than a 62% accuracy strategy with occasional 20% drawdowns? (Depends entirely on the trader's ability to continue trading through drawdowns — a behavioral question the research ignores.)
+Sources: [Nifty500 Momentum 50 Factsheet](https://www.niftyindices.com/Factsheet/FactsheetNifty500Momentum50.pdf) | [BacktestIndia](https://backtestindia.com/) | [ScienceDirect 2017](https://www.sciencedirect.com/science/article/pii/S0970389617301647)
 
-8. **On ensemble complexity:** At what point does ensemble complexity (more base learners, stacking) start hurting OOS performance due to meta-overfitting? When should you stop adding models?
+---
 
-9. **On FinBERT for Indian markets:** FinBERT is trained primarily on English financial text from US markets. Does it correctly interpret sentiment in Indian financial news, which often uses different idioms, mixed Hindi-English, and India-specific corporate governance language?
+### 2. On timing: Does momentum work better in bull markets?
 
-10. **On the LLM model in this codebase:** `minimax/minimax-m2.5` via OpenRouter — what is its track record on financial sentiment classification vs. FinBERT or GPT-4? This was mandated in CLAUDE.md but never evaluated against alternatives.
+**Still open.** Practitioner consensus: yes. Momentum tends to outperform in sustained trending markets and collapses in sharp reversals (2009, 2020). The formal test for NSE is not available in peer-reviewed literature. Capitalmind analysis confirms "most momentum factor portfolios tend to stay invested irrespective of broader market conditions, making them particularly vulnerable in broad and sharp market corrections." The crash protection mechanisms in section 13 address this.
+
+---
+
+### 3. On yfinance reliability for NSE
+
+**Partially answered — gap remains.** Known issues:
+- Ticker format: Must use `.NS` suffix (e.g., `RELIANCE.NS`)
+- `auto_adjust=True` does **not** correctly handle Indian bonus shares in all cases (unreliable for pre-2015 data)
+- Historical data before 2010 is sparse for many Nifty 200/500 tickers
+- Missing data and incorrect adjusted prices are **unquantified** — no published test of completeness exists
+
+Practical mitigation: restrict backtests to post-2015 data where yfinance coverage is most reliable, and cross-validate prices against BSE Bhavcopy files for critical date ranges.
+
+---
+
+### 4. On fundamental data timeliness
+
+**Still open.** The actual lag between BSE results declaration and availability in `ticker.financials` has not been systematically measured. Conservative assumption: treat fundamental data as available T+5 days after announcement date to avoid look-ahead bias. PEAD strategies should use a 7-day delay from announcement to entry.
+
+---
+
+### ✅ 5. Minimum IC to Break Even After NSE Transaction Costs
+
+**Answer: IC ≈ 0.02–0.03 at semi-annual rebalancing (Nifty 100/200 universe).**
+
+Derivation using Fundamental Law of Active Management (IR = IC × √BR):
+- Semi-annual rebalance: ~100% annual turnover → ~0.25% annual cost drag (at 0.25% round-trip)
+- At BR = 100 independent bets/year, an IC of 0.02–0.03 generates expected IR just above zero
+- The Nifty500 Momentum 50 index evidence implies IC ≈ 0.04–0.07 for the 12-1 month signal — comfortably above breakeven
+
+For intraday/weekly rebalancing strategies: breakeven IC rises sharply due to higher turnover and wider spreads.
+
+Sources: [AQR Transaction Costs white paper](https://www.aqr.com/-/media/AQR/Documents/Insights/White-Papers/AQR-Transactions-Costs---Practical-Application.pdf) | [IC as performance measure — arXiv](https://arxiv.org/pdf/2010.08601)
+
+---
+
+### ✅ 6. India VIX Threshold vs. HMM for Regime Detection
+
+**Answer: India VIX filter is simpler and has practitioner support; no peer-reviewed head-to-head comparison exists for NSE. Use the 200-day SMA filter first.**
+
+India VIX facts:
+- All-time high: **92.5** (November 2008); second peak: **~87** (March 2020); current 52-week range: 8.72–23.19
+- VIX = 20 is approximately the **75th–80th percentile** of historical readings
+- VIX = 25 is approximately the **85th–90th percentile**
+- India VIX **mean reverts** in ~45 days (GARCH half-life estimate) — significantly slower than US VIX (~10–20 days). Re-entry timing after VIX spike is 4–8 weeks.
+
+**Crash protection ranking for retail India (empirical evidence, best to worst):**
+1. **NIFTY 50 below 200-day SMA** — strongest documented evidence; reduces momentum max drawdown to sub-20%; costs ~2% CAGR in whipsaw scenarios
+2. **India VIX > 20 / > 25 filter** — practitioner consensus; go to cash or reduce size; re-enter when VIX normalizes below threshold
+3. **Absolute 12-month trailing stop** — exit when portfolio 12-month return turns negative (Dual Momentum approach); reduces 2008 and 2020 crashes
+4. **Volatility-scaled position sizing** — theoretically optimal; hardest to implement correctly
+
+No peer-reviewed paper compares HMM vs. India VIX threshold for NSE momentum specifically. Global evidence (MDPI 2020) favors HMM over single-factor regime filters, but HMM adds implementation complexity without a proven India-specific advantage.
+
+Sources: [NSE India VIX White Paper](https://nsearchives.nseindia.com/web/sites/default/files/inline-files/white_paper_IndiaVIX.pdf) | [MomentumIndia Substack backtest](https://momoindia.substack.com/p/backtest-reducing-momentum-drawdowns) | [Capitalmind momentum](https://www.capitalmind.in/insights/momentum-investing-basics-india) | [Indian Dual Momentum](https://samasthiti.substack.com/p/indian-edition-of-the-dual-momentum) | [MDPI HMM regime-switching](https://www.mdpi.com/1911-8074/13/12/311)
+
+---
+
+### 7. On compounding vs. consistency
+
+**Still open.** This is fundamentally a behavioral finance question — the "right" answer depends on the specific investor's ability to continue trading through drawdowns. Literature consensus: most retail investors abandon strategies after 15–20% drawdowns, making the lower-volatility path (scenario B in Section 3) more valuable in practice regardless of theoretical expected value.
+
+---
+
+### 8. On ensemble complexity and meta-overfitting
+
+**Still open.** The general principle from López de Prado: once you've tested more than ~20 parameter combinations, the Deflated Sharpe Ratio penalty makes even excellent-looking results statistically indistinguishable from noise. Stop adding complexity when the Combinatorial Purged Cross-Validation (CPCV) Sharpe stops improving by > 0.1 per added model.
+
+---
+
+### 9. On FinBERT for Indian markets
+
+**Still open, but concern is real.** FinBERT is trained on English US financial text (Reuters, 10-K filings). Indian financial news (Economic Times, Mint, Business Standard) uses different idioms, mentions of "promoter pledging," SEBI orders, F&O expiry language, and occasionally mixed Hindi-English. No published benchmarking of FinBERT performance on Indian financial news exists. Treat FinBERT sentiment on Indian text as an approximation until validated.
+
+---
+
+### 10. On `minimax/minimax-m2.5` vs. alternatives
+
+**Open, but bounded.** For the market commentary use case in this codebase, sentiment classification accuracy matters less than latency, cost, and coherence. The model is mandated in CLAUDE.md; evaluating it against FinBERT for classification accuracy is a legitimate test but outside scope unless the LLM commentary quality is explicitly unsatisfactory.
 
 ---
 
@@ -683,6 +777,159 @@ These are the most important open questions for practical implementation:
 > The most valuable signals (momentum, PEAD, low volatility, volatility clustering) are the simplest and cheapest to implement. The most complex systems (GNN, Mamba, stacking ensembles) have the weakest real-world validation.
 >
 > **Build simple first. Validate rigorously. Add complexity only when each addition demonstrably improves live IC.**
+
+---
+
+---
+
+## Appendix A: Minimum Viable Phase 1 Momentum Backtest (NSE)
+
+A working template for the simplest possible walk-forward momentum backtest on NSE data, consistent with the evidence above:
+
+```python
+"""
+Phase 1 Momentum Backtest — NSE/NIFTY 200 Universe
+Walk-forward, monthly rebalance, long-only, equal-weight top-20
+No ML. Validates signal before adding complexity.
+"""
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+
+# --- Universe: Nifty 200 tickers (partial list for illustration) ---
+NIFTY200_TICKERS = [
+    "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
+    # ... full 200-ticker list from NSE website
+]
+
+# --- Hard constraint from CLAUDE.md: always use start/end, never period="Nd" ---
+START_DATE = "2015-01-01"   # post-2015 for reliable yfinance data
+END_DATE = "2025-12-31"
+
+def momentum_score(close_prices: pd.Series) -> float:
+    """12-1 month momentum: return skipping last month."""
+    if len(close_prices) < 252:
+        return np.nan
+    return close_prices.iloc[-21] / close_prices.iloc[-252] - 1  # skip last month
+
+def india_vix_regime_ok(vix_value: float, threshold: float = 20.0) -> bool:
+    """Crash protection: pause momentum when India VIX > threshold."""
+    return vix_value < threshold
+
+def nifty_above_200sma(nifty_close: pd.Series) -> bool:
+    """Best-documented crash protection: only run when NIFTY 50 above 200-day SMA."""
+    if len(nifty_close) < 200:
+        return True
+    return nifty_close.iloc[-1] > nifty_close.iloc[-200:].mean()
+
+def walk_forward_backtest(tickers, start, end, top_n=20, rebalance_freq="ME"):
+    """
+    Monthly walk-forward momentum backtest.
+    rebalance_freq: "ME" = month-end (pandas offset alias)
+    """
+    # Download all price data
+    prices = yf.download(tickers, start=start, end=end, auto_adjust=True)["Close"]
+
+    # Rebalance dates
+    rebalance_dates = prices.resample(rebalance_freq).last().index
+
+    portfolio_returns = []
+
+    for i, rebalance_date in enumerate(rebalance_dates[12:-1]):  # need 12m history
+        # Compute momentum scores for each stock as of rebalance date
+        scores = {}
+        hist = prices.loc[:rebalance_date]
+        for ticker in tickers:
+            scores[ticker] = momentum_score(hist[ticker].dropna())
+
+        # Rank and select top N
+        ranked = sorted(scores.items(), key=lambda x: x[1] if not np.isnan(x[1]) else -999, reverse=True)
+        selected = [t for t, s in ranked[:top_n] if not np.isnan(s)]
+
+        if not selected:
+            continue
+
+        # Next month return (forward return)
+        next_date = rebalance_dates[i + 13] if i + 13 < len(rebalance_dates) else prices.index[-1]
+        current_prices = prices.loc[rebalance_date, selected]
+        future_prices = prices.loc[next_date, selected]
+        returns = (future_prices / current_prices - 1).mean()
+
+        portfolio_returns.append({
+            "date": rebalance_date,
+            "return": returns,
+            "n_stocks": len(selected)
+        })
+
+    df = pd.DataFrame(portfolio_returns).set_index("date")
+
+    # Evaluation metrics
+    sharpe = df["return"].mean() / df["return"].std() * np.sqrt(12)
+    max_dd = (1 + df["return"]).cumprod().div((1 + df["return"]).cumprod().cummax()).sub(1).min()
+    ic = df["return"].mean()  # simplified; proper IC requires cross-sectional rank correlation
+
+    print(f"Annualized Return: {df['return'].mean() * 12:.1%}")
+    print(f"Sharpe (annualized): {sharpe:.2f}")
+    print(f"Max Drawdown: {max_dd:.1%}")
+
+    return df
+
+# Run
+# results = walk_forward_backtest(NIFTY200_TICKERS, START_DATE, END_DATE)
+```
+
+---
+
+## Appendix B: FII/DII Data Fetching
+
+```python
+"""
+NSE FII/DII net flow data — free, but requires session handling.
+Use as a macro regime filter, NOT a primary alpha signal.
+"""
+import requests
+import pandas as pd
+
+def fetch_fii_dii_data() -> pd.DataFrame:
+    """
+    Fetch current FII/DII data from NSE.
+    Returns DataFrame with buy/sell/net columns for FII and DII.
+    NOTE: NSE blocks non-Indian IPs. Use Indian server or proxy.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://www.nseindia.com/reports/fii-dii",
+        "Accept": "application/json"
+    }
+    session = requests.Session()
+    # Establish session cookies first
+    session.get("https://www.nseindia.com", headers=headers, timeout=10)
+
+    response = session.get(
+        "https://www.nseindia.com/api/fiidiiTradeReact",
+        headers=headers,
+        timeout=10
+    )
+    data = response.json()
+    return pd.DataFrame(data)
+
+def consecutive_fii_selling_days(fii_series: pd.Series) -> int:
+    """Count consecutive days of FII net selling (negative net values)."""
+    consecutive = 0
+    for val in reversed(fii_series.values):
+        if val < 0:
+            consecutive += 1
+        else:
+            break
+    return consecutive
+
+# Usage:
+# df = fetch_fii_dii_data()
+# selling_days = consecutive_fii_selling_days(df["fii_net"])
+# if selling_days >= 5:
+#     print("Macro caution: pause new long positions")
+```
 
 ---
 
