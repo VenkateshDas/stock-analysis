@@ -20,10 +20,11 @@
 10. [Validation, Bias Prevention & Anti-Leakage](#10-validation-bias-prevention--anti-leakage)
 11. [Production Frameworks & Libraries](#11-production-frameworks--libraries)
 12. [Evaluation Metrics](#12-evaluation-metrics)
-13. [Recommended Architecture for This Project](#13-recommended-architecture-for-this-project)
-14. [Implementation Roadmap](#14-implementation-roadmap)
-15. [Key Pitfalls to Avoid](#15-key-pitfalls-to-avoid)
-16. [References](#16-references)
+13. [Risk-Adjusted Training & Objectives](#13-risk-adjusted-training--objectives)
+14. [Recommended Architecture for This Project](#14-recommended-architecture-for-this-project)
+15. [Implementation Roadmap](#15-implementation-roadmap)
+16. [Key Pitfalls to Avoid](#16-key-pitfalls-to-avoid)
+17. [References](#17-references)
 
 ---
 
@@ -349,7 +350,8 @@ For higher-quality sentiment, newer approaches use:
 
 ### 6.3 Options Flow as Sentiment Proxy
 
-Options data provides a forward-looking market sentiment signal:
+Options data provides a forward-looking market sentiment signal — one of the strongest alternative data sources available without paid data subscriptions (PCR is free via NSE/BSE).
+
 ```python
 # Put/Call Ratio (PCR) — already partially implemented in codebase
 pcr = put_volume / call_volume  # > 1 = bearish, < 0.7 = bullish
@@ -358,9 +360,26 @@ pcr = put_volume / call_volume  # > 1 = bearish, < 0.7 = bullish
 iv_rank = (current_iv - iv_52w_low) / (iv_52w_high - iv_52w_low)  # 0-100
 iv_percentile = percentile_rank(current_iv, historical_iv)
 
-# IV skew (put IV vs. call IV — measures fear)
-iv_skew = put_iv_25_delta - call_iv_25_delta
+# IV skew (put IV vs. call IV — measures tail risk perception / fear)
+iv_skew = put_iv_25_delta - call_iv_25_delta  # positive = bearish skew
+
+# Gamma Exposure (GEX) — predicts near-term price pinning
+# GEX = sum(option_delta × option_gamma × open_interest × 100)
+# High positive GEX → market maker hedging keeps price pinned
+# Negative GEX → hedging amplifies moves (dangerous)
 ```
+
+**Research finding:** The put/call IV spread (difference between put and call IV at same strike) **predicts cross-section of stock returns over 1–6 week horizons** — one of the most robust options-based signals from 1996–2017.
+
+**Important caveat:** ~2/3 of the IV spread predictability disappears when excluding hard-to-borrow (high short-fee) stocks. Part of the signal reflects stock borrow costs, not pure information content. Always filter by float and borrow availability.
+
+| Signal | Window | Direction | Notes |
+|---|---|---|---|
+| PCR | 1–5 days | Contrarian | High PCR → bullish reversal |
+| IV Rank | current | Fear proxy | > 70 = elevated fear, mean-revert |
+| IV Skew | 1–3 weeks | Directional | Negative skew = institutional hedging |
+| GEX | intraday | Pinning | Positive = range-bound; negative = explosive |
+| Unusual OI buildup | 1–2 weeks | Leading | Large OTM calls before earnings = bullish |
 
 ---
 
@@ -380,30 +399,42 @@ Classical Time Series
 └── Exponential Smoothing (ETS)
 
 Deep Learning — Sequential
-├── LSTM / BiLSTM (long-term memory)
-├── GRU (faster LSTM alternative)
-├── TCN — Temporal Convolutional Network (parallelizable)
+├── LSTM / BiLSTM (long-term memory)  RMSE=43.25, DA=65–68%
+├── GRU (faster LSTM; lowest MAE on single-stock tasks)
+├── xLSTM (extended LSTM with matrix memory — outperforms all on NASDAQ)
+├── TCN — Temporal Convolutional Network (parallelizable, dilated)
 └── WaveNet (dilated causal convolutions)
 
 Deep Learning — Attention-Based
-├── Vanilla Transformer (positional encoding + self-attention)
+├── Vanilla Transformer  RMSE=41.87, DA=69.1% ← best pure architecture
 ├── Informer (sparse attention for long sequences)
-├── PatchTST (patch-based tokenization)
-└── TFT — Temporal Fusion Transformer ⭐ BEST OVERALL
+├── PatchTST (patch tokenization; 50% error reduction vs. DeepAR)
+├── iTransformer (ICLR 2024 — inverts axes: variables as tokens)
+├── CATS (NeurIPS 2024 — cross-attention only; no self-attention)
+└── TFT — Temporal Fusion Transformer ⭐ BEST OVERALL PRACTICAL
 
 State Space Models (2024–2025 Frontier)
-├── Mamba (selective SSM — linear complexity)
-├── MambaStock (stock-specific Mamba)
-└── T-Mamba (Mamba + Transformer hybrid)
+├── Mamba (selective SSM — near-linear O(n) complexity)
+├── MambaStock (single-direction Mamba; limited global deps)
+├── SAMBA (ICASSP 2025 — bidirectional Mamba + graph convolution)
+├── T-Mamba (Mamba macro trends + Window Transformer micro variations)
+├── CMDMamba (dual temporal-sensitivity modules; -11.6% MSE on DAX)
+└── MambaLLM (Mamba micro + DeepSeek R1 + FinBERT; best in volatile regimes)
 
 Interpretable / Decomposition Models
-├── N-BEATS (neural basis expansion)
-├── N-HiTS (hierarchical interpolation)
-└── TimesNet (2D temporal modeling)
+├── N-BEATS (neural basis expansion; trend + seasonality)
+├── N-HiTS (hierarchical interpolation; strong volatility forecasting)
+└── TimesNet (2D temporal modeling; competitive RMSE)
 
-Graph Neural Networks (relational modeling)
-└── TFT-GNN (temporal + inter-stock relationships) ⭐ HIGHEST ACCURACY
+Graph Neural Networks (relational modeling across stocks)
+├── LSTM-GNN (Pearson/Granger edges; MSE 10.6% lower than LSTM alone)
+├── TFT-GNN (TFT + graph attention; highest accuracy on US equities) ⭐
+├── Dynamic Dual-Graph NN (price relationship graph + semantic graph)
+├── DASF-Net (diffusion-graph + FinBERT sentiment fusion)
+└── MSGCA (gated cross-attention multimodal; +8–31% MCC improvement)
 ```
+
+> **Key insight on graph edge construction:** Granger causality (directional, causal) outperforms Pearson correlation for edges — eliminates spurious relationships that inflate apparent predictability.
 
 ### 7.2 Temporal Fusion Transformer (TFT) — Primary Recommendation
 
@@ -446,6 +477,18 @@ TFT_CONFIG = {
 ```
 
 **Result:** Starting with $1 in Jan 2024, the TFT CNN-LSTM strategy grew to ~$9.07 by Sept 2025 (+807% total return vs. +38% buy-and-hold). Stayed in cash ~79% of the time when prediction uncertainty was high.
+
+### 7.2b iTransformer — Best for High-Dimensional Multi-Stock Setups
+
+The iTransformer (ICLR 2024) **inverts the Transformer axes**: instead of a token per time step, each variable (stock/feature) is a token. Self-attention then models cross-variable correlations rather than temporal dependencies — the FFN handles temporal patterns per variable.
+
+Best used when forecasting **many correlated stocks simultaneously** (e.g., the 50 Nifty 50 stocks as a single model) — captures sector-level co-movement.
+
+### 7.2c CATS (NeurIPS 2024) — Cross-Attention Only
+
+Controversial 2024 NeurIPS finding: **eliminate self-attention entirely**. Use future horizon-dependent parameters as queries, past data as keys/values. Result: simpler, better performance on long-horizon tasks.
+
+Implication: self-attention in standard Transformers may be learning noise from the many-to-many temporal relationships; a focused cross-attention from "what I want to predict" to "what's relevant in the past" is more precise.
 
 ### 7.3 Mamba — Emerging Frontier Model
 
@@ -544,6 +587,15 @@ prediction = (
     regime_probs[2] * lstm_trending.predict(features)
 )
 ```
+
+### 8.2b DASF-Net — Diffusion Graph + Sentiment Fusion
+
+A 2025 model combining three modalities via multi-head attention:
+1. **Industry relationship graph** (inter-stock supply chain / sector relationships)
+2. **Fundamental indicator graph** (P/E, margins, etc. as node features)
+3. **FinBERT sentiment** from daily news (3-day aggregation window = optimal)
+
+Finding: **3 days** is the empirically optimal sentiment aggregation window for next-day prediction — not 1 day (too noisy) and not 7 days (too stale).
 
 ### 8.3 TFT + GNN Hybrid (Highest Accuracy)
 
@@ -657,11 +709,15 @@ inverted = yield_curve_spread < 0  # Recession signal
 
 This is the **most critical section**. Most published research suffers from some form of data leakage, making results overly optimistic.
 
-### 10.1 The Three Cardinal Sins
+### 10.1 The Seven Look-Ahead Bias Sources
 
-1. **Look-ahead bias in features** — Using future data to compute present features
+1. **Look-ahead bias in features** — Using future data to compute present features (e.g., rolling mean that includes future timestamps)
 2. **Train/test contamination** — Fitting scalers/normalizers on entire dataset before split
-3. **Random k-fold on time series** — Future observations appear in training set
+3. **Random k-fold on time series** — Future observations appear in training set (RMSE artificially reduced >20% per 2025 arXiv study)
+4. **Survivorship bias** — Training only on currently listed stocks excludes delisted companies; inflates performance significantly
+5. **Fundamental data timing** — Using Q3 earnings (announced Oct 15) for a prediction made on Oct 1 — must use SEC filing availability date, not period end date
+6. **Target engineering leak** — Computing "did price rise 5 days?" globally before splitting; must compute per-fold
+7. **Timestamp trap** — Using bar open/close prices before the bar has actually closed; bar timestamps must reflect *when data was available*, not when the period started
 
 ### 10.2 Walk-Forward Validation (Gold Standard)
 
@@ -836,6 +892,35 @@ historical_forecasts = tft.historical_forecasts(
 )
 ```
 
+### 11.3b Hyperparameter Reference Table (Research Baselines)
+
+| Hyperparameter | LSTM | Transformer | TFT | LightGBM |
+|---|---|---|---|---|
+| Lookback window | 20–60 days | 60–180 days | 180 days | N/A (feature lags) |
+| Hidden units / d_model | 64–256 | 128–512 | 128 | num_leaves=127 |
+| Layers | 2–3 | 3–6 encoder | 2 LSTM + attn | N/A |
+| Attention heads | N/A | 8 | 8 | N/A |
+| Learning rate | 0.001 | 0.0001 | 0.001 | 0.05 |
+| Batch size | 32–64 | 32–64 | 64 | N/A |
+| Dropout | 0.2–0.3 | 0.1–0.2 | 0.2 | N/A |
+| Gradient clipping | 1.0 | 1.0 | 1.0 | N/A |
+| Optimizer | Adam | AdamW | Adam | N/A |
+| Normalization | RevIN or SAN | RevIN or SAN | built-in VSN | StandardScaler |
+
+**Important:** For Transformers and LSTMs on stock data, use **RevIN** (Reversible Instance Normalization) or **SAN** (Short-window Adaptive Normalization) instead of standard global normalization. These normalize per-instance (per sequence window) and reverse the normalization at output — addressing non-stationarity without leaking global statistics.
+
+```python
+# RevIN: normalize each input window independently, denormalize predictions
+class RevIN(nn.Module):
+    def normalize(self, x):  # x: [batch, seq_len, features]
+        self.mean = x.mean(dim=1, keepdim=True)
+        self.std = x.std(dim=1, keepdim=True) + 1e-8
+        return (x - self.mean) / self.std
+
+    def denormalize(self, x):
+        return x * self.std + self.mean
+```
+
 ### 11.4 NeuralForecast — Alternative for Pure DL
 
 ```python
@@ -909,7 +994,40 @@ def calmar_ratio(returns, equity_curve):
     annualized_return = (1 + returns.mean()) ** 252 - 1
     mdd = abs(max_drawdown(equity_curve))
     return annualized_return / mdd
+
+def information_coefficient(y_pred_returns, y_true_returns):
+    """
+    Spearman rank correlation between predictions and realizations.
+    The industry-standard metric for factor/signal evaluation.
+    IC > 0.05 is considered a good signal; IC > 0.1 is excellent.
+    """
+    from scipy.stats import spearmanr
+    ic, _ = spearmanr(y_pred_returns, y_true_returns)
+    return ic
+
+def icir(ic_series):
+    """
+    IC Information Ratio = IC.mean() / IC.std()
+    Measures signal consistency over time. ICIR > 0.5 is good.
+    """
+    return ic_series.mean() / ic_series.std()
 ```
+
+### 12.3b Advanced Financial Metrics (Industry Standard)
+
+| Metric | Formula / Source | Threshold |
+|---|---|---|
+| **Sharpe Ratio** | (mean_excess_return / std) × √252 | > 1.0 good, > 2.0 excellent |
+| **Maximum Drawdown** | peak-to-trough decline | < -20% concerning |
+| **Calmar Ratio** | annualized return / \|max drawdown\| | > 1.0 good |
+| **Sortino Ratio** | mean_excess / downside_std × √252 | Better than Sharpe for non-Gaussian |
+| **Information Coefficient (IC)** | Spearman(pred, actual) | > 0.05 useful signal |
+| **ICIR** | IC.mean() / IC.std() | > 0.5 consistent signal |
+| **Directional Accuracy** | correct sign predictions / total | > 55% useful |
+| **Probability of Backtest Overfitting (PBO)** | CPCV-derived (López de Prado) | < 0.5 means not overfit |
+| **Deflated Sharpe Ratio (DSR)** | Adjusts Sharpe for multiple testing | Use to report honest results |
+
+> **Warning:** A high Sharpe from a single backtest path is meaningless without PBO/DSR. The CPCV method generates a *distribution* of Sharpe ratios across combinatorial splits, giving a statistically honest assessment of strategy quality.
 
 ### 12.4 Calibration of Probabilistic Forecasts
 
@@ -925,7 +1043,66 @@ def prediction_interval_coverage(y_true, lower_bound, upper_bound):
 
 ---
 
-## 13. Recommended Architecture for This Project
+## 13. Risk-Adjusted Training & Objectives
+
+### 13.1 The Core Insight
+
+Most ML models optimize MSE/MAE — treating all errors equally. For trading, an error during a high-volatility spike costs far more than during a quiet period. 2024–2025 research trend: **embed risk-adjusted objectives directly into training**.
+
+### 13.2 Sharpe Ratio as Training Loss
+
+```python
+def sharpe_loss(y_pred_returns: torch.Tensor, risk_free_rate: float = 0.065/252) -> torch.Tensor:
+    """
+    Directly optimize Sharpe ratio during training.
+    y_pred_returns: predicted return series (not prices)
+    """
+    excess_returns = y_pred_returns - risk_free_rate
+    sharpe = excess_returns.mean() / (excess_returns.std() + 1e-8)
+    return -sharpe  # minimize negative Sharpe = maximize Sharpe
+
+# TFT-ASRO (Adaptive Sharpe Ratio Optimization):
+# Multi-task learning: predict both returns AND volatility simultaneously
+# Loss = alpha * return_prediction_loss + beta * (-sharpe_loss)
+```
+
+**Key results (TFT-ASRO, 2024):** Outperforms conventional forecasting on both predictive accuracy AND portfolio returns across stock indices, crypto, and commodities simultaneously.
+
+### 13.3 End-to-End Portfolio Optimization
+
+Rather than predict → sort → construct (two steps), include **portfolio weights and transaction costs** directly in the training loss:
+
+```python
+# Loss = -E[after_cost_portfolio_return] + lambda * portfolio_risk
+# This is a "one-step weight optimization" approach
+# Outperforms predict-then-sort benchmark
+# Less susceptible to transaction cost erosion
+```
+
+### 13.4 Deep Reinforcement Learning (DRL) for Risk-Adjusted Trading
+
+Three DRL agents trained on different reward functions, then combined into unified policy:
+- Agent A: Maximize log returns
+- Agent B: Maximize differential Sharpe ratio
+- Agent C: Minimize maximum drawdown
+
+Result: The ensemble policy achieves better risk-adjusted performance than any single reward function, tested across global markets 2021–2024.
+
+### 13.5 Activity-Based Bars (Advanced Data Construction)
+
+Standard time bars (daily OHLCV) are suboptimal because different days have vastly different information content. Activity-based bars address this:
+
+| Bar Type | Construction | Benefit |
+|---|---|---|
+| **Tick bars** | New bar every N transactions | Equal information per bar |
+| **Volume bars** | New bar every N shares traded | Removes volume-driven noise |
+| **Dollar bars** | New bar every $N traded | Best for correlated multi-asset models |
+
+Dollar bars are preferred for ML training: each bar contains equal dollar value, making features (returns, volatility) more stationary and reducing serial correlation in features. Eliminates "timestamp trap" — bar timestamps reflect information completion, not arbitrary time boundaries.
+
+---
+
+## 14. Recommended Architecture for This Project
 
 ### 13.1 Phased Implementation
 
@@ -1021,7 +1198,7 @@ Calendar: day_of_week, month, days_to_earnings, days_to_expiry
 
 ---
 
-## 14. Implementation Roadmap
+## 15. Implementation Roadmap
 
 ### Step 1: Data Infrastructure
 - [ ] Create `PriceDataProvider` wrapping yfinance (already exists)
@@ -1056,7 +1233,7 @@ Calendar: day_of_week, month, days_to_earnings, days_to_expiry
 
 ---
 
-## 15. Key Pitfalls to Avoid
+## 16. Key Pitfalls to Avoid
 
 | Pitfall | Description | Prevention |
 |---|---|---|
@@ -1074,25 +1251,53 @@ Calendar: day_of_week, month, days_to_earnings, days_to_expiry
 
 ---
 
-## 16. References
+## 17. References
 
-### Key Papers
+### Key Papers — Temporal Models
 
-1. [Temporal Fusion Transformer (Bryan Lim et al., 2021)](https://arxiv.org/abs/1912.09363) — Original TFT paper
-2. [A Novel Hybrid TFT-GNN for Stock Market Prediction (MDPI, 2024)](https://www.mdpi.com/2673-9909/5/4/176)
-3. [Hybrid CNN-LSTM + TFT for Stock Forecasting (IIETA, 2025)](https://www.iieta.org/journals/isi/paper/10.18280/isi.301122)
-4. [T-Mamba: Mamba-Transformer for Stock Prediction (ACM, 2025)](https://dl.acm.org/doi/10.1145/3746709.3746715)
-5. [FinMamba: Market-Aware Graph-Enhanced Multi-Level Mamba (arXiv, 2025)](https://arxiv.org/html/2502.06707v1)
-6. [Predicting Stock Prices with FinBERT-LSTM (arXiv, 2024)](https://arxiv.org/abs/2407.16150)
-7. [Advancing Financial Forecasting: N-HiTS and N-BEATS (arXiv, 2024)](https://arxiv.org/html/2409.00480v2)
-8. [Flexible Target Prediction with Ensemble + Transfer Learning (MDPI, 2026)](https://www.mdpi.com/1099-4300/28/1/84)
-9. [Stock Price Prediction Using Stacked Heterogeneous Ensemble (MDPI, 2025)](https://www.mdpi.com/2227-7072/13/4/201)
-10. [Hidden Leaks in Time Series: Data Leakage in LSTM (arXiv, 2025)](https://arxiv.org/html/2512.06932v1)
-11. [Advances in Financial Machine Learning — Marcos López de Prado (Book, 2018)](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086)
-12. [Regime-Switching Factor Investing with HMMs (MDPI, 2020)](https://www.mdpi.com/1911-8074/13/12/311)
-13. [Survey of Feature Selection for Stock Prediction (PMC, 2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC9834034/)
-14. [FinGPT: Sentiment-Based Stock Movement Prediction (arXiv, 2024)](https://arxiv.org/html/2412.10823v2)
-15. [MambaLLM: Macro + Micro Stock Prediction (MDPI, 2025)](https://www.mdpi.com/2227-7390/13/10/1599)
+1. [Temporal Fusion Transformer (Bryan Lim et al., 2021)](https://arxiv.org/abs/1912.09363) — Original TFT paper; VSN + shared-Values attention
+2. [A Novel Hybrid TFT-GNN for Stock Market Prediction (MDPI, 2024)](https://www.mdpi.com/2673-9909/5/4/176) — Highest accuracy on US equity benchmark
+3. [Hybrid CNN-LSTM + TFT for Stock Forecasting (IIETA, 2025)](https://www.iieta.org/journals/isi/paper/10.18280/isi.301122) — +807% strategy return vs +38% buy-and-hold
+4. [TFT for Vietnamese Equities (Springer, 2025)](https://link.springer.com/content/pdf/10.1007/978-981-95-3358-9_8.pdf) — 40–50% MAE reduction vs LSTM/BiLSTM
+5. [iTransformer (ICLR, 2024)](https://proceedings.iclr.cc/paper_files/paper/2024/file/2ea18fdc667e0ef2ad82b2b4d65147ad-Paper-Conference.pdf) — Inverted Transformer; best for high-dimensional multivariate
+6. [CATS: Are Self-Attentions Effective? (NeurIPS, 2024)](https://proceedings.neurips.cc/paper_files/paper/2024/file/cf66f995883298c4db2f0dcba28fb211-Paper-Conference.pdf) — Cross-attention only outperforms standard Transformer
+7. [PatchTST (arXiv, 2022)](https://arxiv.org/pdf/2211.14730) — Patch tokenization; 50% error reduction vs DeepAR
+
+### Key Papers — State Space / Mamba
+
+8. [T-Mamba: Mamba-Transformer for Stock Prediction (ACM, 2025)](https://dl.acm.org/doi/10.1145/3746709.3746715)
+9. [FinMamba: Market-Aware Graph-Enhanced Multi-Level Mamba (arXiv, 2025)](https://arxiv.org/html/2502.06707v1)
+10. [MambaLLM: Macro + Micro Stock Prediction (MDPI, 2025)](https://www.mdpi.com/2227-7390/13/10/1599) — Best in volatile 2024–2025 regimes
+11. [CMDMamba — Dual Temporal Sensitivity Mamba (Frontiers AI, 2025)](https://www.frontiersin.org/journals/artificial-intelligence) — -11.6% MSE on DAX
+12. [Graph-Mamba for Stock Prediction (arXiv, 2024)](https://arxiv.org/abs/2410.03707)
+
+### Key Papers — NLP / Sentiment
+
+13. [Predicting Stock Prices with FinBERT-LSTM (arXiv, 2024)](https://arxiv.org/abs/2407.16150)
+14. [FinGPT: Sentiment-Based Stock Movement Prediction (arXiv, 2024)](https://arxiv.org/html/2412.10823v2) — 526% cumulative return, Sharpe 0.407
+15. [Innovative Sentiment Analysis: FinBERT, GPT-4, Logistic Regression (MDPI, 2024)](https://www.mdpi.com/2504-2289/8/11/143)
+16. [DASF-Net: Diffusion-Graph + FinBERT Sentiment Fusion (MDPI, 2025)](https://www.mdpi.com/1911-8074/18/8/417) — 3-day optimal sentiment window
+17. [MSGCA: Gated Cross-Attention Multimodal Fusion (Springer, 2025)](https://link.springer.com/article/10.1007/s40747-025-02023-3) — +8–31% MCC improvement
+
+### Key Papers — Ensemble & Feature Engineering
+
+18. [Advancing Stock Price Prediction through Hybrid Ensembles (Springer, 2025)](https://link.springer.com/article/10.1186/s40537-025-01185-8)
+19. [Flexible Target Prediction with Ensemble + Transfer Learning (MDPI, 2026)](https://www.mdpi.com/1099-4300/28/1/84)
+20. [Stock Price Prediction Using Stacked Heterogeneous Ensemble (MDPI, 2025)](https://www.mdpi.com/2227-7072/13/4/201)
+21. [Survey of Feature Selection for Stock Prediction (PMC, 2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC9834034/)
+22. [Assessing Technical Indicators on ML Models (arXiv, 2024)](https://arxiv.org/html/2412.15448v1)
+23. [R-CSAN Channel-Spatial Attention (Nature Sci. Reports, 2025)](https://www.nature.com/articles/s41598) — 17–49% RMSE reduction vs ARIMA
+24. [Systematic Review on GNN-based Stock Forecasting (ACM, 2024)](https://dl.acm.org/doi/10.1145/3696411)
+25. [Hybrid LSTM-GNN for Stock Prediction (arXiv, 2025)](https://arxiv.org/html/2502.15813v1) — MSE 10.6% lower than LSTM alone
+
+### Key Papers — Validation & Risk
+
+26. [Hidden Leaks in Time Series: Data Leakage in LSTM (arXiv, 2025)](https://arxiv.org/html/2512.06932v1) — 10-fold CV introduces >20% artificial RMSE gain
+27. [Purged Cross-Validation (Wikipedia)](https://en.wikipedia.org/wiki/Purged_cross-validation) — with embargo
+28. [Advances in Financial Machine Learning — Marcos López de Prado (Book, 2018)](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086) — **Definitive practitioner reference**
+29. [Regime-Switching Factor Investing with HMMs (MDPI, 2020)](https://www.mdpi.com/1911-8074/13/12/311)
+30. [Multi-Sensor TFT with Adaptive Sharpe Ratio (MDPI, 2024)](https://www.mdpi.com/1424-8220/25/3/976) — TFT-ASRO risk-adjusted training
+31. [Why Options IV Predicts Stock Returns (ScienceDirect, 2025)](https://www.sciencedirect.com/science/article/pii/S0304405X25001618)
 
 ### Libraries & Tools
 
