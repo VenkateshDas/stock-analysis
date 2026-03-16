@@ -105,6 +105,168 @@ function strategyLabel(s: string): string {
   return map[s.toLowerCase()] ?? s
 }
 
+// ── Trade Forecast Chart ──────────────────────────────────────────────────────
+
+function TradeForecastChart({ trade, currentPrice }: { trade: PaperTrade; currentPrice: number | null }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const chartApiRef  = useRef<IChartApi | null>(null)
+  const [status, setStatus] = useState<{ label: string; desc: string; cls: string; sigma: string } | null>(null)
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    let cancelled = false
+
+    api.getStockHistory(trade.symbol, '1d').then((data) => {
+      if (cancelled || !containerRef.current) return
+
+      const entryTs  = new Date(trade.entry_date).getTime()
+      const DAY_MS   = 86_400_000
+      // Show 30 days before entry + all since entry
+      const startTs  = entryTs - 30 * DAY_MS
+      const allBars  = data.bars.filter(b => b.timestamp >= startTs)
+      if (!allBars.length) return
+
+      const container = containerRef.current
+      const chart = createChart(container, {
+        width:  container.offsetWidth  || 560,
+        height: container.offsetHeight || 300,
+        layout: {
+          background: { type: ColorType.Solid, color: 'transparent' },
+          textColor: 'rgba(148,163,184,0.65)',
+          fontSize: 10,
+        },
+        grid: {
+          vertLines: { color: 'rgba(148,163,184,0.05)' },
+          horzLines: { color: 'rgba(148,163,184,0.07)' },
+        },
+        rightPriceScale: {
+          borderColor: 'rgba(148,163,184,0.1)',
+          scaleMargins: { top: 0.08, bottom: 0.12 },
+        },
+        timeScale: { borderColor: 'rgba(148,163,184,0.1)', timeVisible: false },
+        crosshair: { mode: 1 },
+        handleScroll: true,
+        handleScale:  true,
+      })
+      chartApiRef.current = chart
+
+      // Historical candlesticks
+      const candle = chart.addCandlestickSeries({
+        upColor: '#22c55e', downColor: '#ef4444',
+        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+        wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+      })
+      candle.setData(allBars.map(b => ({
+        time: (b.timestamp / 1000) as Time,
+        open: b.open, high: b.high, low: b.low, close: b.close,
+      })))
+
+      // Entry / Stop / Target lines
+      candle.createPriceLine({ price: trade.entry_price, color: '#818cf8', lineWidth: 1, lineStyle: LineStyle.Solid,  axisLabelVisible: true, title: 'Entry'  })
+      candle.createPriceLine({ price: trade.stop_price,  color: '#ef4444', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Stop'   })
+      candle.createPriceLine({ price: trade.target_price,color: '#22c55e', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Target' })
+
+      // Projection cone: from entry date forward (20 day time stop window)
+      const DAYS = 20
+      const atr  = trade.atr > 0 ? trade.atr : trade.entry_price * 0.015
+      const projMid:   { time: Time; value: number }[] = [{ time: (entryTs / 1000) as Time, value: trade.entry_price }]
+      const projUpper: { time: Time; value: number }[] = [{ time: (entryTs / 1000) as Time, value: trade.entry_price }]
+      const projLower: { time: Time; value: number }[] = [{ time: (entryTs / 1000) as Time, value: trade.entry_price }]
+      for (let d = 1; d <= DAYS; d++) {
+        const t   = ((entryTs + d * DAY_MS) / 1000) as Time
+        const pct = d / DAYS
+        const mid  = trade.entry_price + pct * (trade.target_price - trade.entry_price)
+        const band = atr * Math.sqrt(d) * 0.55
+        projMid.push({ time: t, value: mid })
+        projUpper.push({ time: t, value: Math.min(mid + band, trade.target_price * 1.06) })
+        projLower.push({ time: t, value: Math.max(mid - band, trade.stop_price * 0.96) })
+      }
+      chart.addLineSeries({ color: 'rgba(129,140,248,0.75)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false }).setData(projMid)
+      chart.addLineSeries({ color: 'rgba(34,197,94,0.35)',   lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false }).setData(projUpper)
+      chart.addLineSeries({ color: 'rgba(239,68,68,0.35)',   lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false }).setData(projLower)
+
+      // Actual price line since entry
+      const sinceBars = allBars.filter(b => b.timestamp >= entryTs)
+      if (sinceBars.length > 1) {
+        chart.addLineSeries({ color: 'rgba(251,191,36,0.85)', lineWidth: 2, priceLineVisible: false, lastValueVisible: false })
+          .setData(sinceBars.map(b => ({ time: (b.timestamp / 1000) as Time, value: b.close })))
+      }
+
+      chart.timeScale().fitContent()
+
+      // Compute forecast status
+      if (currentPrice != null) {
+        const daysOpen = Math.max(1, Math.round((Date.now() - entryTs) / DAY_MS))
+        const d = Math.min(daysOpen, DAYS)
+        const pct = d / DAYS
+        const mid  = trade.entry_price + pct * (trade.target_price - trade.entry_price)
+        const band = atr * Math.sqrt(d) * 0.55
+        const lower = Math.max(mid - band, trade.stop_price * 0.96)
+        const upper = Math.min(mid + band, trade.target_price * 1.06)
+        const sigmaAnnual = (atr / trade.entry_price) * Math.sqrt(252) * 100
+        const sigmaStr = sigmaAnnual.toFixed(1) + '% p.a.'
+        if (currentPrice < lower) {
+          setStatus({ label: 'Breaking Down', desc: 'Price has fallen below the projected lower band — trade is off track', cls: 'bg-red-500/10 border-red-500/30 text-red-400', sigma: sigmaStr })
+        } else if (currentPrice > upper) {
+          setStatus({ label: 'Breaking Out', desc: 'Price is above the projected upper band — ahead of plan', cls: 'bg-green-500/10 border-green-500/30 text-green-400', sigma: sigmaStr })
+        } else {
+          setStatus({ label: 'On Track', desc: 'Price is within the projected range — trade progressing as expected', cls: 'bg-accent/10 border-accent/30 text-accent', sigma: sigmaStr })
+        }
+      }
+    }).catch(() => { /* silent */ })
+
+    return () => {
+      cancelled = true
+      chartApiRef.current?.remove()
+      chartApiRef.current = null
+    }
+  }, [trade.symbol, trade.entry_date, trade.entry_price, trade.stop_price, trade.target_price, trade.atr, currentPrice])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const obs = new ResizeObserver(() => {
+      chartApiRef.current?.applyOptions({ width: el.offsetWidth, height: el.offsetHeight })
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  return (
+    <div>
+      <h3 className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-2">Price Forecast</h3>
+      {status && (
+        <div className={`flex items-start justify-between gap-2 rounded-xl border px-3 py-2 mb-2 text-xs ${status.cls}`}>
+          <div className="flex items-start gap-2">
+            <span className="shrink-0 mt-0.5">{status.label === 'Breaking Down' ? '↓' : status.label === 'Breaking Out' ? '↑' : '→'}</span>
+            <div>
+              <p className="font-semibold">{status.label}</p>
+              <p className="opacity-80 text-[10px] mt-0.5">{status.desc}</p>
+            </div>
+          </div>
+          <span className="text-[10px] opacity-60 shrink-0">σ {status.sigma}</span>
+        </div>
+      )}
+      <div className="rounded-xl border border-border/40 overflow-hidden bg-bg" style={{ height: 260 }}>
+        <div ref={containerRef} className="w-full h-full" />
+      </div>
+      <div className="flex gap-3 mt-1.5 flex-wrap">
+        {[
+          { color: 'bg-[#818cf8]', label: 'Projected path' },
+          { color: 'bg-yellow-400', label: 'Actual price' },
+          { color: 'bg-red-500',   label: 'Stop' },
+          { color: 'bg-green-500', label: 'Target' },
+        ].map(({ color, label }) => (
+          <div key={label} className="flex items-center gap-1">
+            <div className={`w-2.5 h-0.5 rounded-full ${color}`} />
+            <span className="text-[9px] text-text-muted/60">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Close Trade Modal ─────────────────────────────────────────────────────────
 
 function CloseModal({
@@ -413,7 +575,7 @@ function TradeDetailPanel({
       <div className="flex-1 bg-black/50" onClick={onClose} />
 
       {/* Panel */}
-      <div className="w-full max-w-md bg-surface border-l border-border shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-2xl bg-surface border-l border-border shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border/60">
           <div className="min-w-0">
