@@ -235,7 +235,7 @@ def _gbm_projection(
 
     if entry_date_str:
         entry_dt_pd = pd.Timestamp(entry_date_str).normalize()
-        idx_dates = _strip_tz(pd.DatetimeIndex(df.index)).normalize()
+        idx_dates = _strip_tz(df.index).normalize()
         filtered = df[idx_dates >= entry_dt_pd]
 
         if not filtered.empty:

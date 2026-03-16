@@ -1054,9 +1054,10 @@ function AddTradeModal({ row, virtualCapital, presetId, onClose, onSaved }: AddT
     : 'bg-text-muted/40'
 
   async function handleSave() {
-    if (stopN >= entryN)  { setError('Stop must be below entry price'); return }
-    if (targetN <= entryN) { setError('Target must be above entry price'); return }
-    if (rr < 1.5)         { setError('Risk:Reward too low — minimum 1.5:1 recommended'); return }
+    if (stopN >= entryN)    { setError('Stop must be below entry price'); return }
+    if (targetN <= entryN)  { setError('Target must be above entry price'); return }
+    if (rr < 1.5)           { setError('Risk:Reward too low — minimum 1.5:1 recommended'); return }
+    if (tradeCapitalN <= 0) { setError('Capital must be greater than 0'); return }
     setSaving(true); setError('')
     try {
       await createTrade({

@@ -289,8 +289,13 @@ function TradeProjectionChart({ trade }: { trade: PaperTrade }) {
     // ── Projection cone ───────────────────────────────────────────────
     if (proj.projection.length > 1) {
       const pts = proj.projection
+      // midLine is the primary series — price level lines attach here so they
+      // always render (createPriceLine requires the series to have data)
       const midLine = chart.addLineSeries({ color: 'rgba(129,140,248,0.7)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false })
       midLine.setData(pts.map(p => ({ time: p.time as Time, value: p.mid })))
+      midLine.createPriceLine({ price: trade.entry_price,  color: '#818cf8', lineWidth: 1, lineStyle: LineStyle.Solid,  axisLabelVisible: true, title: 'Entry'  })
+      midLine.createPriceLine({ price: trade.stop_price,   color: '#ef4444', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Stop'   })
+      midLine.createPriceLine({ price: trade.target_price, color: '#22c55e', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Target' })
       const upperLine = chart.addLineSeries({ color: 'rgba(34,197,94,0.35)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
       upperLine.setData(pts.map(p => ({ time: p.time as Time, value: p.upper })))
       const lowerLine = chart.addLineSeries({ color: 'rgba(239,68,68,0.35)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
@@ -310,16 +315,10 @@ function TradeProjectionChart({ trade }: { trade: PaperTrade }) {
       }
     }
 
-    // ── Price level lines via a hidden anchor series ───────────────────
-    const anchor = chart.addLineSeries({ visible: false, priceLineVisible: false, lastValueVisible: false })
-    anchor.createPriceLine({ price: trade.entry_price,  color: '#818cf8', lineWidth: 1, lineStyle: LineStyle.Solid,  axisLabelVisible: true, title: 'Entry'  })
-    anchor.createPriceLine({ price: trade.stop_price,   color: '#ef4444', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Stop'   })
-    anchor.createPriceLine({ price: trade.target_price, color: '#22c55e', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Target' })
-
     chart.timeScale().fitContent()
 
     return () => { chart.remove(); chartRef.current = null }
-  }, [proj, loading])
+  }, [proj, loading, trade])
 
   const dirCfg = {
     on_track:      { cls: 'text-green-400 bg-green-500/10 border-green-500/30',   icon: '↑' },
