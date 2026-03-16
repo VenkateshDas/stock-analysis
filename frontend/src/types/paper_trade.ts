@@ -56,6 +56,24 @@ export interface PaperTradeCreate {
   atr: number
   notes?: string
   virtual_capital: number
+  capital_deployed?: number
+}
+
+export interface ProjectionPoint {
+  time: number
+  mid: number
+  upper: number
+  lower: number
+}
+
+export interface TradeProjection {
+  projection: ProjectionPoint[]
+  actual: { time: number; value: number }[] | null
+  direction: 'on_track' | 'stalling' | 'breaking_down' | null
+  direction_label: string | null
+  direction_detail: string | null
+  mu_annual: number
+  sigma_annual: number
 }
 
 export interface PositionSizingResult {
