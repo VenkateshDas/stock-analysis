@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { createChart, type IChartApi, type Time, ColorType, LineStyle } from 'lightweight-charts'
 import { usePaperTradeStore } from '../store/usePaperTradeStore'
 import { api } from '../services/api'
-import type { ExitAlert, PaperTrade, PaperTradeLiveStatus, TradeProjection, TradeStatus } from '../types/paper_trade'
+import type { ExitAlert, PaperTrade, PaperTradeLiveStatus, TradeStatus } from '../types/paper_trade'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -293,7 +293,7 @@ function CloseModal({
           <button onClick={onClose} className="text-text-muted hover:text-text-primary text-xl leading-none">×</button>
         </div>
         <p className="text-sm text-text-muted mb-4">
-          {trade.symbol.replace('.NS', '')} · Entry ₹{trade.entry_price.toFixed(2)} · {trade.shares} shares
+          {trade.symbol.replace('.NS', '')} · Entry ₹{trade.entry_price.toFixed(2)} · {Number.isInteger(trade.shares) ? trade.shares : trade.shares.toFixed(4).replace(/\.?0+$/, '')} shares
         </p>
         <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Exit Price</label>
         <input
@@ -403,128 +403,6 @@ function PriceLadder({ trade, currentPrice }: { trade: PaperTrade; currentPrice?
   )
 }
 
-// ── Trade Projection Chart ────────────────────────────────────────────────────
-
-function TradeProjectionChart({ trade }: { trade: PaperTrade }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const chartRef     = useRef<IChartApi | null>(null)
-  const [proj, setProj]       = useState<TradeProjection | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    api.getTradeProjection(
-      trade.symbol, trade.entry_price, trade.stop_price, trade.target_price, trade.entry_date,
-    ).then((data) => {
-      if (!cancelled) { setProj(data); setLoading(false) }
-    }).catch(() => {
-      if (!cancelled) setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [trade.id])
-
-  useEffect(() => {
-    if (!containerRef.current || loading || !proj) return
-
-    const container = containerRef.current
-    const chart = createChart(container, {
-      width:  container.offsetWidth || 360,
-      height: 185,
-      layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: 'rgba(148,163,184,0.65)',
-        fontSize: 10,
-      },
-      grid: {
-        vertLines: { color: 'rgba(148,163,184,0.04)' },
-        horzLines: { color: 'rgba(148,163,184,0.06)' },
-      },
-      rightPriceScale: { borderColor: 'rgba(148,163,184,0.1)', scaleMargins: { top: 0.08, bottom: 0.08 } },
-      timeScale: { borderColor: 'rgba(148,163,184,0.1)', timeVisible: false },
-      crosshair: { mode: 1 },
-      handleScroll: false,
-      handleScale:  false,
-    })
-    chartRef.current = chart
-
-    // ── Projection cone ───────────────────────────────────────────────
-    if (proj.projection.length > 1) {
-      const pts = proj.projection
-      // midLine is the primary series — price level lines attach here so they
-      // always render (createPriceLine requires the series to have data)
-      const midLine = chart.addLineSeries({ color: 'rgba(129,140,248,0.7)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false })
-      midLine.setData(pts.map(p => ({ time: p.time as Time, value: p.mid })))
-      midLine.createPriceLine({ price: trade.entry_price,  color: '#818cf8', lineWidth: 1, lineStyle: LineStyle.Solid,  axisLabelVisible: true, title: 'Entry'  })
-      midLine.createPriceLine({ price: trade.stop_price,   color: '#ef4444', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Stop'   })
-      midLine.createPriceLine({ price: trade.target_price, color: '#22c55e', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'Target' })
-      const upperLine = chart.addLineSeries({ color: 'rgba(34,197,94,0.35)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
-      upperLine.setData(pts.map(p => ({ time: p.time as Time, value: p.upper })))
-      const lowerLine = chart.addLineSeries({ color: 'rgba(239,68,68,0.35)', lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, lastValueVisible: false })
-      lowerLine.setData(pts.map(p => ({ time: p.time as Time, value: p.lower })))
-    }
-
-    // ── Actual price path ─────────────────────────────────────────────
-    if (proj.actual && proj.actual.length > 0) {
-      // For closed trades show path only up to exit date
-      const cutoff = trade.exit_date ? new Date(trade.exit_date).getTime() / 1000 : Infinity
-      const actualPts = proj.actual
-        .filter(p => p.time <= cutoff)
-        .map(p => ({ time: p.time as Time, value: p.value }))
-      if (actualPts.length > 0) {
-        const actualLine = chart.addLineSeries({ color: 'rgba(255,255,255,0.85)', lineWidth: 2, priceLineVisible: false, lastValueVisible: false })
-        actualLine.setData(actualPts)
-      }
-    }
-
-    chart.timeScale().fitContent()
-
-    return () => { chart.remove(); chartRef.current = null }
-  }, [proj, loading, trade])
-
-  const dirCfg = {
-    on_track:      { cls: 'text-green-400 bg-green-500/10 border-green-500/30',   icon: '↑' },
-    stalling:      { cls: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30', icon: '→' },
-    breaking_down: { cls: 'text-red-400 bg-red-500/10 border-red-500/30',         icon: '↓' },
-  }
-  const dir = proj?.direction ? dirCfg[proj.direction as keyof typeof dirCfg] : null
-
-  return (
-    <div>
-      {/* Direction badge */}
-      {dir && proj?.direction_label && (
-        <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 mb-3 ${dir.cls}`}>
-          <span className="text-base font-bold shrink-0">{dir.icon}</span>
-          <div className="min-w-0">
-            <p className="text-xs font-bold leading-none">{proj.direction_label}</p>
-            {proj.direction_detail && (
-              <p className="text-[10px] opacity-70 mt-0.5 leading-tight">{proj.direction_detail}</p>
-            )}
-          </div>
-          {proj.sigma_annual != null && (
-            <span className="ml-auto text-[10px] opacity-50 shrink-0">σ {proj.sigma_annual.toFixed(1)}% p.a.</span>
-          )}
-        </div>
-      )}
-      {/* Chart */}
-      {loading ? (
-        <div className="h-[185px] rounded-xl bg-bg border border-border/40 flex items-center justify-center">
-          <span className="text-xs text-text-muted animate-pulse">Loading projection…</span>
-        </div>
-      ) : (
-        <div ref={containerRef} className="rounded-xl overflow-hidden border border-border/20" style={{ height: '185px' }} />
-      )}
-      {/* GBM legend */}
-      {proj && !loading && (
-        <div className="flex gap-4 mt-1.5 text-[10px] text-text-muted/60">
-          <span className="flex items-center gap-1"><span className="inline-block w-3 border-t border-dashed border-indigo-400/60" />Projected path</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-3 border-t-2 border-white/60" />Actual price</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Trade Detail Panel ────────────────────────────────────────────────────────
 
 function TradeDetailPanel({
@@ -615,18 +493,15 @@ function TradeDetailPanel({
             <PriceLadder trade={t} currentPrice={status.current_price} />
           </div>
 
-          {/* Projection Chart */}
-          <div>
-            <h3 className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-2">Price Forecast</h3>
-            <TradeProjectionChart trade={t} />
-          </div>
+          {/* Historical + Forecast Chart */}
+          <TradeForecastChart trade={t} currentPrice={status.current_price} />
 
           {/* Position Details */}
           <div>
             <h3 className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-2">Position Details</h3>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: 'Shares',          value: t.shares.toLocaleString('en-IN') },
+                { label: 'Shares',          value: Number.isInteger(t.shares) ? t.shares.toString() : t.shares.toFixed(4).replace(/\.?0+$/, '') },
                 { label: 'Capital Deployed', value: fmt(t.entry_price * t.shares, 0) },
                 { label: 'Max Risk (stop)',  value: fmt(riskAmount, 0), color: 'text-red-400' },
                 { label: 'Max Gain (target)', value: fmt(maxGain, 0), color: 'text-green-400' },
@@ -958,7 +833,7 @@ function OpenTradeCard({
             </span>
           )}
         </div>
-        <span className="text-xs text-text-muted">{t.shares} sh</span>
+        <span className="text-xs text-text-muted">{Number.isInteger(t.shares) ? t.shares : t.shares.toFixed(4).replace(/\.?0+$/, '')} sh</span>
       </div>
 
       {/* ── Notes (1 line, truncated) ── */}

@@ -43,12 +43,12 @@ def _get_virtual_capital(user_id: str = "default") -> float:
     return float(val) if val else _DEFAULT_CAPITAL
 
 
-def _compute_shares(entry: float, stop: float, virtual_capital: float) -> int:
+def _compute_shares(entry: float, stop: float, virtual_capital: float) -> float:
     stop_dist = entry - stop
     if stop_dist <= 0:
-        return 1
+        return 1.0
     risk_amount = virtual_capital * (_RISK_PCT / 100)
-    return max(1, math.floor(risk_amount / stop_dist))
+    return round(max(0.01, risk_amount / stop_dist), 4)
 
 
 def _build_alerts(
@@ -310,7 +310,7 @@ async def calculate_sizing(
         raise HTTPException(status_code=400, detail="Stop must be below entry price")
     target_dist = target_price - entry_price
     risk_amount = cap * (_RISK_PCT / 100)
-    shares = max(1, math.floor(risk_amount / stop_dist))
+    shares = round(max(0.01, risk_amount / stop_dist), 4)
     capital_needed = shares * entry_price
     return PositionSizingResult(
         virtual_capital=cap,
@@ -361,7 +361,7 @@ async def create_trade(
 ):
     cap = body.virtual_capital or _get_virtual_capital(user_id=current_user.id)
     if body.capital_deployed and body.capital_deployed > 0 and body.entry_price > 0:
-        shares = max(1, math.floor(body.capital_deployed / body.entry_price))
+        shares = round(body.capital_deployed / body.entry_price, 4)
     else:
         shares = _compute_shares(body.entry_price, body.stop_price, cap)
     trade_id = str(uuid.uuid4())
