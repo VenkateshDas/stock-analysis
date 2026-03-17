@@ -238,6 +238,19 @@ export interface MacroSnapshot {
   tickers: MacroTicker[]
 }
 
+export interface MacroTickerDetail {
+  key: string
+  label: string
+  value: number | null
+  change_1w_pct: number | null
+  change_1m_pct: number | null
+  change_3m_pct: number | null
+  direction: 'rising' | 'falling' | 'flat'
+  context: string
+  history_dates: string[]
+  history_closes: number[]
+}
+
 export interface ValuationMetrics {
   symbol: string
   trade_date: string

@@ -31,7 +31,7 @@ class PaperTrade(BaseModel):
     stop_price: float
     target_price: float
     atr: float
-    shares: int
+    shares: float
     virtual_capital: float
     entry_date: str            # "YYYY-MM-DD"
     notes: Optional[str] = None
@@ -78,7 +78,7 @@ class PositionSizingResult(BaseModel):
     stop_distance: float
     target_distance: float
     risk_reward: float
-    shares: int
+    shares: float
     capital_needed: float
     capital_pct: float
     max_loss: float

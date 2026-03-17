@@ -10,6 +10,7 @@ import type {
   PCRResult,
   TradeSetup,
   MacroSnapshot,
+  MacroTickerDetail,
   ValuationMetrics,
   StockFundamentals,
 } from '../types/market'
@@ -253,6 +254,9 @@ export const api = {
 
   getMacro: () =>
     client.get<MacroSnapshot>('/macro').then((r) => r.data),
+
+  getMacroDetail: (key: string) =>
+    client.get<MacroTickerDetail>(`/macro/${key}`).then((r) => r.data),
 
   getValuation: (symbol: string) =>
     client.get<ValuationMetrics>(`/indices/${symbol}/valuation`).then((r) => r.data),

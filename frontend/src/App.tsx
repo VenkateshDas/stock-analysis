@@ -9,6 +9,7 @@ import { BotLab } from './pages/BotLab'
 import { Screener } from './pages/Screener'
 import { PaperTrades } from './pages/PaperTrades'
 import { LoginPage } from './pages/LoginPage'
+import { MacroDetail } from './pages/MacroDetail'
 import { useAuthStore } from './store/useAuthStore'
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
                 <Route path="/bot" element={<RequireAuth><BotLab /></RequireAuth>} />
                 <Route path="/paper-trades" element={<RequireAuth><PaperTrades /></RequireAuth>} />
                 <Route path="/stock/:ticker" element={<RequireAuth><StockDetail /></RequireAuth>} />
+                <Route path="/macro/:key" element={<MacroDetail />} />
                 <Route path="/:symbol" element={<RequireAuth><IndexDetail /></RequireAuth>} />
               </Routes>
             </Layout>

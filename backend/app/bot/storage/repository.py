@@ -190,7 +190,7 @@ class BotRepository:
                     stop_price REAL NOT NULL,
                     target_price REAL NOT NULL,
                     atr REAL NOT NULL DEFAULT 0,
-                    shares INTEGER NOT NULL DEFAULT 1,
+                    shares REAL NOT NULL DEFAULT 1,
                     virtual_capital REAL NOT NULL DEFAULT 100000,
                     entry_date TEXT NOT NULL,
                     notes TEXT,
@@ -580,7 +580,7 @@ class BotRepository:
             created_at=row["created_at"],
         )
 
-    def create_paper_trade(self, trade: PaperTradeCreate, trade_id: str, shares: int, entry_date: str, user_id: str = "default") -> str:
+    def create_paper_trade(self, trade: PaperTradeCreate, trade_id: str, shares: float, entry_date: str, user_id: str = "default") -> str:
         now = datetime.utcnow().isoformat()
         with self._conn() as conn:
             conn.execute(
