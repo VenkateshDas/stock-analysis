@@ -44,6 +44,14 @@ _LOOKBACK: Dict[str, int] = {
     "5m":   59,
 }
 
+# Interval → cache TTL in seconds (intraday results expire faster to reflect live prices)
+_CACHE_TTL: Dict[str, int] = {
+    "5m":  300,   # 5 minutes
+    "15m": 900,   # 15 minutes
+    "1h":  1800,  # 30 minutes
+    "1d":  1800,  # 30 minutes (daily bars change only once per day)
+}
+
 # Download symbols in batches to stay well under Yahoo's rate limits
 _BATCH_SIZE = 100
 _BATCH_SLEEP = 0.3   # seconds between batches
@@ -355,7 +363,7 @@ def _safe(v) -> Optional[float]:
         return None
 
 
-def _compute_indicators(df: pd.DataFrame, sym: str) -> Optional[Dict[str, Any]]:
+def _compute_indicators(df: pd.DataFrame, sym: str, interval: str = "1d") -> Optional[Dict[str, Any]]:
     """Compute all screener indicator values from an OHLCV DataFrame."""
     try:
         df = df.dropna(subset=["Close"])
@@ -374,7 +382,22 @@ def _compute_indicators(df: pd.DataFrame, sym: str) -> Optional[Dict[str, Any]]:
         last_open = _safe(df["Open"].iloc[-1]) if "Open" in df.columns else None
         last_vol  = _safe(volume.iloc[-1])
 
-        prev_close = _safe(close.iloc[-2]) if len(close) >= 2 else last_close
+        # For intraday intervals, day change = latest close vs previous session's last close.
+        # For daily intervals, day change = latest daily close vs previous daily close.
+        if interval in ("5m", "15m", "1h"):
+            try:
+                today = df.index[-1].date()
+                prev_session_close_series = close[pd.Series(df.index).apply(
+                    lambda x: x.date() < today).values]
+                if len(prev_session_close_series) > 0:
+                    prev_close = _safe(prev_session_close_series.iloc[-1])
+                else:
+                    prev_close = _safe(close.iloc[-2]) if len(close) >= 2 else last_close
+            except Exception:
+                prev_close = _safe(close.iloc[-2]) if len(close) >= 2 else last_close
+        else:
+            prev_close = _safe(close.iloc[-2]) if len(close) >= 2 else last_close
+
         change     = round(last_close - prev_close, 2) if prev_close else 0
         change_pct = round(change / prev_close * 100, 2) if prev_close else 0
 
@@ -501,6 +524,8 @@ def _batch_fetch_indicators(symbols: List[str], interval: str) -> Dict[str, Dict
     lookback_days = _LOOKBACK.get(interval, 420)
     end   = datetime.now()
     start = end - timedelta(days=lookback_days)
+    # Yahoo Finance's `end` is exclusive — add 1 day so today's bars are always included
+    end_exclusive = end + timedelta(days=1)
 
     # Deduplicate while preserving order
     seen: set = set()
@@ -514,7 +539,7 @@ def _batch_fetch_indicators(symbols: List[str], interval: str) -> Dict[str, Dict
             raw = yf.download(
                 tickers=batch,
                 start=start.strftime("%Y-%m-%d"),
-                end=end.strftime("%Y-%m-%d"),
+                end=end_exclusive.strftime("%Y-%m-%d"),
                 interval=interval,
                 group_by="ticker",
                 auto_adjust=True,
@@ -534,7 +559,7 @@ def _batch_fetch_indicators(symbols: List[str], interval: str) -> Dict[str, Dict
             sym_df = _extract_sym_df(raw, sym, len(batch))
             if sym_df is None or sym_df.empty:
                 continue
-            ind = _compute_indicators(sym_df, sym)
+            ind = _compute_indicators(sym_df, sym, interval)
             if ind is not None:
                 result[sym] = ind
 
@@ -632,13 +657,14 @@ def run_scan(criteria: ScreenerCriteria) -> ScreenerResult:
     symbols = [c["symbol"] for c in constituents]
     sym_to_constituent = {c["symbol"]: c for c in constituents}
 
-    # ── Batch indicator cache (reuse within the 30-min screener window) ──────
+    # ── Batch indicator cache (TTL matches the interval so prices stay fresh) ──
+    cache_ttl = _CACHE_TTL.get(interval, 1800)
     batch_cache_key = f"batch_ind:{criteria.index_symbol}:{interval}"
     indicators: Dict[str, Dict] = screener_cache.get(batch_cache_key) or {}
     if not indicators:
         indicators = _batch_fetch_indicators(symbols, interval)
         if indicators:
-            screener_cache.set(batch_cache_key, indicators, ttl=1800)
+            screener_cache.set(batch_cache_key, indicators, ttl=cache_ttl)
 
     # ── Pass 1: technical conditions ─────────────────────────────────────────
     tech_pass: List[Tuple[str, Dict, int, int, List[str]]] = []
@@ -721,5 +747,5 @@ def run_scan(criteria: ScreenerCriteria) -> ScreenerResult:
         rows=rows,
         scanned_at=datetime.utcnow().isoformat(),
     )
-    screener_cache.set(cache_key, result)
+    screener_cache.set(cache_key, result, ttl=cache_ttl)
     return result

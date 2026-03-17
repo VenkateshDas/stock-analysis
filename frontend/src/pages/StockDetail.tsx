@@ -252,7 +252,7 @@ export function StockDetail() {
   const [fundamentalsLoading, setFundamentalsLoading] = useState(false)
 
   const [chartInterval,       setChartInterval]       = useState<'1d' | '1h' | '15m' | '5m'>('1d')
-  const [historyLoading,      setHistoryLoading]      = useState(false)
+  const [_historyLoading,     setHistoryLoading]      = useState(false)
   const [analysisLoading,     setAnalysisLoading]     = useState(false)
   const [trendLoading,        setTrendLoading]        = useState(false)
   const [openingRangeLoading, setOpeningRangeLoading] = useState(false)
@@ -394,7 +394,7 @@ export function StockDetail() {
           </button>
         ))}
       </div>
-      {historyLoading ? (
+      {_historyLoading ? (
         <div className="bg-surface border border-border rounded-2xl h-[300px] sm:h-[560px] flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />

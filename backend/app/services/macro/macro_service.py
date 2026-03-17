@@ -10,8 +10,8 @@ from app.services.cache import TTLCache
 
 logger = logging.getLogger(__name__)
 
-# 1-hour cache — macro context doesn't change minute-to-minute
-_macro_cache = TTLCache(ttl=3600)
+# 5-minute cache — keeps macro context reasonably fresh
+_macro_cache = TTLCache(ttl=300)
 
 # ── Ticker config ─────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ _TICKERS = [
     ("usd_inr",    "USDINR=X",   "USD / INR",       "currency"),
     ("brent",      "BZ=F",       "Brent Crude",     "commodity"),
     ("gold",       "GC=F",       "Gold",            "commodity"),
-    ("dxy",        "DX-Y.NYB",   "Dollar Index",    "rates"),
+    ("dxy",        "DX=F",       "Dollar Index",    "rates"),
 ]
 
 # ── Plain-English context generators ─────────────────────────────────────────
@@ -114,8 +114,9 @@ def _direction(chg_1m: Optional[float]) -> str:
     return "flat"
 
 def _fetch_ticker(key: str, yf_symbol: str, label: str) -> MacroTicker:
-    end = date.today()
-    start = end - timedelta(days=100)
+    # end must be tomorrow so today's session data is included (yfinance end is exclusive)
+    end = date.today() + timedelta(days=1)
+    start = end - timedelta(days=101)
     try:
         hist = yf.Ticker(yf_symbol).history(start=start, end=end, interval="1d")
         if hist.empty:
@@ -148,6 +149,10 @@ def _fetch_ticker(key: str, yf_symbol: str, label: str) -> MacroTicker:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+# key → (yf_symbol, label) lookup
+_KEY_META = {key: (sym, label) for key, sym, label, _ in _TICKERS}
+
+
 def get_macro_snapshot() -> MacroSnapshot:
     cache_key = "macro_snapshot"
     cached = _macro_cache.get(cache_key)
@@ -158,3 +163,47 @@ def get_macro_snapshot() -> MacroSnapshot:
     snapshot = MacroSnapshot(trade_date=str(date.today()), tickers=tickers)
     _macro_cache.set(cache_key, snapshot)
     return snapshot
+
+
+def get_macro_ticker_detail(key: str) -> Optional[dict]:
+    """Return a single macro ticker with 90-day price history for charting."""
+    if key not in _KEY_META:
+        return None
+
+    cache_key = f"macro_detail:{key}"
+    cached = _macro_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    yf_symbol, label = _KEY_META[key]
+    end = date.today() + timedelta(days=1)  # exclusive — include today
+    start = end - timedelta(days=131)  # ~90 trading days
+    try:
+        hist = yf.Ticker(yf_symbol).history(start=start, end=end, interval="1d")
+        if hist.empty:
+            return None
+        closes = hist["Close"].dropna()
+        val = round(float(closes.iloc[-1]), 4)
+        chg_1w  = _pct_change(closes, 5)
+        chg_1m  = _pct_change(closes, 21)
+        chg_3m  = _pct_change(closes, 63)
+        context_fn = _CONTEXT_FNS.get(key, lambda v, c: label)
+        # Last 90 trading days for chart
+        history_slice = closes.iloc[-90:]
+        result = {
+            "key": key,
+            "label": label,
+            "value": val,
+            "change_1w_pct": chg_1w,
+            "change_1m_pct": chg_1m,
+            "change_3m_pct": chg_3m,
+            "direction": _direction(chg_1m),
+            "context": context_fn(val, chg_1m),
+            "history_dates": [d.strftime("%Y-%m-%d") for d in history_slice.index],
+            "history_closes": [round(float(v), 4) for v in history_slice.tolist()],
+        }
+        _macro_cache.set(cache_key, result, ttl=300)
+        return result
+    except Exception as exc:
+        logger.warning("macro detail fetch failed for %s: %s", key, exc)
+        return None

@@ -206,8 +206,8 @@ def _build_snapshot(symbol: str) -> Optional[IndexSnapshot]:
     if snap is None:
         return None
 
-    # 5-day spark data
-    spark_df = yahoo_provider.get_history(config.ticker, period_days=5)
+    # 30-day spark data (covers both 1-week and 30-day performance tabs)
+    spark_df = yahoo_provider.get_history(config.ticker, period_days=30)
     spark_closes = [round(float(v), 4) for v in spark_df["Close"].tolist()] if not spark_df.empty else []
     spark_dates = [d.strftime("%Y-%m-%d") for d in spark_df.index.tolist()] if not spark_df.empty else []
 
@@ -267,7 +267,7 @@ def _build_stock_snapshot(ticker: str) -> Optional[IndexSnapshot]:
 
     meta = yahoo_provider.get_asset_metadata(symbol)
 
-    spark_df = yahoo_provider.get_history(symbol, period_days=5)
+    spark_df = yahoo_provider.get_history(symbol, period_days=30)
     spark_closes = [round(float(v), 4) for v in spark_df["Close"].tolist()] if not spark_df.empty else []
     spark_dates = [d.strftime("%Y-%m-%d") for d in spark_df.index.tolist()] if not spark_df.empty else []
 

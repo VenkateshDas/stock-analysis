@@ -55,9 +55,10 @@ export function Dashboard() {
     const id = window.setInterval(() => {
       fetchIndices()
       fetchOverview()
+      fetchMacro()
     }, DASHBOARD_POLL_MS)
     return () => window.clearInterval(id)
-  }, [fetchIndices, fetchOverview])
+  }, [fetchIndices, fetchOverview, fetchMacro])
 
   const marketStats = useMemo(() => {
     const up = indices.filter((i) => i.change_pct >= 0).length

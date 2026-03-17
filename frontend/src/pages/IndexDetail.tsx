@@ -411,12 +411,10 @@ export function IndexDetail() {
         fetchIndices()
         fetchAnalysis(sym)
         fetchTrend(sym)
-        setHistoryLoading(true)
-        api
-          .getHistory(sym, chartInterval)
-          .then(setHistory)
-          .catch(() => setHistory(null))
-          .finally(() => setHistoryLoading(false))
+        // Silent history refresh — no loading state so the chart stays mounted
+        // and the user's zoom/pan is preserved. Loading state is managed by the
+        // dedicated useEffect([sym, chartInterval]) for interval switches.
+        api.getHistory(sym, chartInterval).then(setHistory).catch(() => null)
         setSectorLoading(true)
         api
           .getIndexSectors(sym)

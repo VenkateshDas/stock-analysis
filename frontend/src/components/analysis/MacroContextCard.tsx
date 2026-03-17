@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import type { MacroSnapshot, MacroTicker } from '../../types/market'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -34,12 +35,15 @@ function fmtUnit(key: string): string {
 
 // ── Tile ──────────────────────────────────────────────────────────────────────
 
-function MacroTile({ t }: { t: MacroTicker }) {
+function MacroTile({ t, onClick }: { t: MacroTicker; onClick: () => void }) {
   const chg = t.change_1m_pct
   const color = dirColor(t.direction, t.key)
 
   return (
-    <div className="bg-bg/60 border border-border rounded-xl px-4 py-3 space-y-1.5 flex flex-col h-full justify-between">
+    <button
+      onClick={onClick}
+      className="bg-bg/60 border border-border rounded-xl px-4 py-3 space-y-1.5 flex flex-col h-full justify-between text-left w-full cursor-pointer hover:border-accent/50 hover:bg-accent/5 transition-all group"
+    >
       {/* Label + arrow */}
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted/70">
@@ -67,7 +71,12 @@ function MacroTile({ t }: { t: MacroTicker }) {
 
       {/* Context */}
       <p className="text-[10px] text-text-muted leading-snug">{t.context}</p>
-    </div>
+
+      {/* Click hint */}
+      <p className="text-[9px] text-text-muted/40 group-hover:text-accent/60 transition-colors">
+        Tap for details →
+      </p>
+    </button>
   )
 }
 
@@ -79,6 +88,8 @@ interface Props {
 }
 
 export function MacroContextCard({ data, loading }: Props) {
+  const navigate = useNavigate()
+
   if (loading) {
     return (
       <div className="bg-surface border border-border rounded-2xl p-5 flex flex-col h-full">
@@ -100,7 +111,7 @@ export function MacroContextCard({ data, loading }: Props) {
         <div>
           <p className="text-sm font-semibold text-text-primary">Macro Context</p>
           <p className="text-[11px] text-text-muted mt-0.5">
-            Global forces shaping market conditions
+            Global forces shaping market conditions · click any tile for details
           </p>
         </div>
         <span className="text-[10px] text-text-muted/50">{data.trade_date}</span>
@@ -108,7 +119,11 @@ export function MacroContextCard({ data, loading }: Props) {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-1 grid-rows-2">
         {data.tickers.map((t) => (
-          <MacroTile key={t.key} t={t} />
+          <MacroTile
+            key={t.key}
+            t={t}
+            onClick={() => navigate(`/macro/${t.key}`)}
+          />
         ))}
       </div>
     </div>
